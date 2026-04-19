@@ -12,10 +12,12 @@ data class ApiResponse<T>(
         fun <T> ok(): ApiResponse<T> = ApiResponse(true, null, null)
         fun <T> fail(errorCode: ErrorCode): ApiResponse<T> =
             ApiResponse(false, null, ErrorResponse(errorCode.code, errorCode.message))
+        fun <T> fail(errorCode: ErrorCode, message: String?): ApiResponse<T> =
+            ApiResponse(false, null, ErrorResponse(errorCode.code, message))
     }
 }
 
 data class ErrorResponse(
     val code: String,
-    val message: String,
+    val message: String?,
 )
