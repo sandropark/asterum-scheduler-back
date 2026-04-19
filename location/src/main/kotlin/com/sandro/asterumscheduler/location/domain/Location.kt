@@ -1,5 +1,6 @@
 package com.sandro.asterumscheduler.location.domain
 
+import com.sandro.asterumscheduler.common.BaseEntity
 import jakarta.persistence.*
 
 @Entity
@@ -9,4 +10,4 @@ class Location(
     val id: Long = 0,
     val name: String,
     val capacity: Int,
-)
+) : BaseEntity()

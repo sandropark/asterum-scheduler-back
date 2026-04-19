@@ -1,5 +1,6 @@
 package com.sandro.asterumscheduler.user.domain
 
+import com.sandro.asterumscheduler.common.BaseEntity
 import jakarta.persistence.*
 
 @Entity
@@ -12,4 +13,4 @@ class User(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id")
     val team: Team,
-)
+) : BaseEntity()

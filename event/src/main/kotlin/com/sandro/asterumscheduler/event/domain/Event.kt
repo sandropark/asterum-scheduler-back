@@ -1,5 +1,6 @@
 package com.sandro.asterumscheduler.event.domain
 
+import com.sandro.asterumscheduler.common.BaseEntity
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -18,4 +19,4 @@ class Event(
     val notes: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
-)
+) : BaseEntity()
