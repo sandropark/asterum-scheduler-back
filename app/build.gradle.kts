@@ -7,5 +7,7 @@ dependencies {
     implementation(project(":event"))
     implementation(project(":user"))
     implementation(project(":location"))
-    implementation("org.springframework.boot:spring-boot-starter")
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    runtimeOnly("org.postgresql:postgresql")
 }
