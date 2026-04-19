@@ -2,7 +2,7 @@ spring:
   application:
     name: asterum_scheduler
   datasource:
-    url: jdbc:postgresql://localhost:5432/asterum
+    url: jdbc:postgresql://localhost:15432/asterum
     username: asterum
     password: asterum
     driver-class-name: org.postgresql.Driver
