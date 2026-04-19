@@ -1,15 +1,3 @@
 spring:
   application:
     name: asterum_scheduler
-  datasource:
-    url: jdbc:postgresql://localhost:15432/asterum
-    username: asterum
-    password: asterum
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true

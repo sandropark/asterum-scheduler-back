@@ -4,8 +4,10 @@ import com.sandro.asterumscheduler.user.domain.Team
 import com.sandro.asterumscheduler.user.domain.User
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 
+@Profile("dev")
 @Component
 class DataInitializer(
     private val teamRepository: TeamRepository,
