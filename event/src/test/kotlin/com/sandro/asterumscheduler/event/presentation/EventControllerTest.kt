@@ -10,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.post
 import java.time.LocalDateTime
 
@@ -66,6 +67,13 @@ class EventControllerTest {
                 "creatorId":1}""".trimMargin()
         }.andExpect {
             status { isBadRequest() }
+        }.andDo { print() }
+    }
+
+    @Test
+    fun `DELETE events - 이벤트 삭제 성공 시 204를 반환한다`() {
+        mockMvc.delete("/events/1").andExpect {
+            status { isNoContent() }
         }.andDo { print() }
     }
 }

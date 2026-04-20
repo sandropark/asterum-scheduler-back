@@ -44,6 +44,14 @@ class EventService(
         }
     }
 
+    @Transactional
+    fun delete(id: Long) {
+        // TODO: soft delete??
+        val event = eventRepository.findById(id)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        eventRepository.delete(event)
+    }
+
     private fun Event.toResponse() = EventResponse(
         id = id,
         title = title,

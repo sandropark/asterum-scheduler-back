@@ -6,10 +6,7 @@ import com.sandro.asterumscheduler.event.application.EventResponse
 import com.sandro.asterumscheduler.event.application.EventService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.ResponseStatus
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 
 @RestController
 class EventController(private val eventService: EventService) : EventApi {
@@ -18,4 +15,9 @@ class EventController(private val eventService: EventService) : EventApi {
     @ResponseStatus(HttpStatus.CREATED)
     override fun createEvent(@Valid @RequestBody request: CreateEventRequest): ApiResponse<EventResponse> =
         ApiResponse.ok(eventService.create(request))
+
+    @DeleteMapping("/events/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    override fun deleteEvent(@PathVariable id: Long) =
+        eventService.delete(id)
 }
