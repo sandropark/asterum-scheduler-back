@@ -1,0 +1,20 @@
+package com.sandro.asterumscheduler.event.infra
+
+import com.sandro.asterumscheduler.event.domain.EventInstances
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+import java.time.LocalDateTime
+
+interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
+
+    @Query(
+        "SELECT ei.locationId FROM EventInstances ei " +
+        "WHERE ei.locationId IS NOT NULL " +
+        "AND ei.startTime < :end AND ei.endTime > :start"
+    )
+    fun findResourceIdsByOverlap(
+        @Param("start") start: LocalDateTime,
+        @Param("end") end: LocalDateTime,
+    ): List<Long>
+}
