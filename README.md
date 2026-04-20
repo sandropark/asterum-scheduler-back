@@ -4,8 +4,8 @@
 
 ## 기술 스택
 
-- Kotlin 2.2 / Spring Boot 4.0 / Java 21
-- PostgreSQL (btree_gist 확장)
+- Kotlin 2.1.20 / Spring Boot 3.4.5 / Java 21
+- PostgreSQL 16 (btree_gist 확장)
 - Gradle 멀티 모듈
 
 ## 모듈 구조
@@ -23,14 +23,24 @@ event/      ← 일정 도메인 (단일·반복)
 ## 로컬 실행
 
 ```bash
-# DB 실행
+# DB 실행 (host port 15432)
 docker-compose up -d
 
-# 서버 실행 (Java 21 필요)
-./gradlew :app:bootRun
+# 서버 실행 (Java 21 필요). 프로파일 미지정 시 datasource 미설정으로 기동 실패.
+./gradlew :app:bootRun --args='--spring.profiles.active=dev'
 ```
 
 Swagger UI: `http://localhost:8080/swagger-ui.html`
+
+## 테스트
+
+```bash
+./gradlew test                                              # 전체 모듈
+./gradlew :event:test                                       # 단일 모듈
+./gradlew :event:test --tests "*EventServiceTest*"          # 단일 클래스
+./gradlew :app:test                                         # 통합 테스트 (Testcontainers로 Postgres 16 자동 기동)
+./gradlew build                                             # 전체 빌드 + 테스트
+```
 
 ## 핵심 설계
 
