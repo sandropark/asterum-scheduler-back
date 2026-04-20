@@ -18,7 +18,8 @@ data class CreateEventRequest(
     @field:Size(max = 100)
     val participantIds: List<Long> = emptyList(),
 ) {
-    @JsonIgnore
-    @AssertTrue(message = "종료 시간은 시작 시간과 같거나 이후여야 합니다.")
-    fun isTimeRangeValid(): Boolean = !endTime.isBefore(startTime)
+    @get:JsonIgnore
+    @get:AssertTrue(message = "종료 시간은 시작 시간과 같거나 이후여야 합니다.")
+    val isTimeRangeValid: Boolean
+        get() = !endTime.isBefore(startTime)
 }
