@@ -1,6 +1,7 @@
 package com.sandro.asterumscheduler.event.infra
 
 import com.sandro.asterumscheduler.event.domain.Event
+import com.sandro.asterumscheduler.event.domain.EventParticipant
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.context.annotation.Profile
@@ -18,31 +19,39 @@ class EventDataInitializer(
 
         val base = LocalDateTime.of(2026, 4, 21, 9, 0)
 
+        fun event(
+            title: String,
+            startTime: LocalDateTime,
+            endTime: LocalDateTime,
+            locationId: Long?,
+            notes: String?,
+            creatorId: Long,
+            userIds: List<Long>
+        ): Event {
+            val e = Event(
+                title = title,
+                startTime = startTime,
+                endTime = endTime,
+                locationId = locationId,
+                notes = notes,
+                creatorId = creatorId
+            )
+            userIds.forEach { e.participants.add(EventParticipant(event = e, userId = it)) }
+            return e
+        }
+
         eventRepository.saveAll(
             listOf(
-                Event(
-                    title = "주간 개발팀 회의",
-                    startTime = base,
-                    endTime = base.plusHours(1),
-                    locationId = 1L,
-                    notes = "스프린트 현황 공유",
-                    creatorId = 1L,
-                ),
-                Event(
-                    title = "디자인 리뷰",
-                    startTime = base.plusHours(2),
-                    endTime = base.plusHours(3),
-                    locationId = 2L,
-                    notes = null,
-                    creatorId = 3L,
-                ),
-                Event(
-                    title = "신규 입사자 교육",
-                    startTime = base.plusDays(1),
-                    endTime = base.plusDays(1).plusHours(4),
-                    locationId = 4L,
-                    notes = "온보딩 프로그램",
-                    creatorId = 4L,
+                event("주간 개발팀 회의", base, base.plusHours(1), 1L, "스프린트 현황 공유", 1L, listOf(2L, 3L)),
+                event("디자인 리뷰", base.plusHours(2), base.plusHours(3), 2L, null, 3L, listOf(1L, 2L)),
+                event(
+                    "신규 입사자 교육",
+                    base.plusDays(1),
+                    base.plusDays(1).plusHours(4),
+                    4L,
+                    "온보딩 프로그램",
+                    4L,
+                    listOf(1L, 2L, 3L)
                 ),
             )
         )

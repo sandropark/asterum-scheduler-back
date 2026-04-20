@@ -16,7 +16,10 @@ class Event(
     @Column(nullable = false)
     val endTime: LocalDateTime,
     val locationId: Long? = null,
+    @Column(length = 500)
     val notes: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
+    @OneToMany(mappedBy = "event", cascade = [CascadeType.ALL], orphanRemoval = true)
+    val participants: MutableList<EventParticipant> = mutableListOf(),
 ) : BaseEntity()

@@ -1,3 +1,10 @@
 spring:
   application:
     name: asterum_scheduler
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 100
+    show-sql: true
