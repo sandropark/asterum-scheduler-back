@@ -16,6 +16,13 @@ class EventController(private val eventService: EventService) : EventApi {
     override fun createEvent(@Valid @RequestBody request: CreateEventRequest): ApiResponse<EventResponse> =
         ApiResponse.ok(eventService.create(request))
 
+    @PutMapping("/events/{id}")
+    override fun updateEvent(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: com.sandro.asterumscheduler.event.application.UpdateEventRequest,
+    ): ApiResponse<EventResponse> =
+        ApiResponse.ok(eventService.update(id, request))
+
     @DeleteMapping("/events/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun deleteEvent(@PathVariable id: Long) =

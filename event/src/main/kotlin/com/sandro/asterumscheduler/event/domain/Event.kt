@@ -10,16 +10,38 @@ class Event(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
     @Column(nullable = false, length = 255)
-    val title: String,
+    var title: String,
     @Column(nullable = false)
-    val startTime: LocalDateTime,
+    var startTime: LocalDateTime,
     @Column(nullable = false)
-    val endTime: LocalDateTime,
-    val locationId: Long? = null,
+    var endTime: LocalDateTime,
+    var locationId: Long? = null,
     @Column(length = 500)
-    val notes: String? = null,
+    var notes: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
     @OneToMany(mappedBy = "event", cascade = [CascadeType.ALL], orphanRemoval = true)
     val participants: MutableList<EventParticipant> = mutableListOf(),
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun update(
+        title: String,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+        locationId: Long?,
+        notes: String?,
+        participantIds: List<Long>,
+    ) {
+        this.title = title
+        this.startTime = startTime
+        this.endTime = endTime
+        this.locationId = locationId
+        this.notes = notes
+        replaceParticipants(participantIds)
+    }
+
+    fun replaceParticipants(userIds: List<Long>) {
+        participants.clear()
+        userIds.forEach { participants.add(EventParticipant(event = this, userId = it)) }
+    }
+}

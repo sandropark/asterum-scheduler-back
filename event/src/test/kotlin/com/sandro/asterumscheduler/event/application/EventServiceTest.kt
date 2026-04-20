@@ -123,6 +123,79 @@ class EventServiceTest {
     }
 
     @Test
+    fun `이벤트를 수정하면 변경된 값이 반영된 응답을 반환한다`() {
+        val existing = Event(
+            id = 1L,
+            title = "이전 제목",
+            startTime = LocalDateTime.of(2026, 4, 21, 9, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            locationId = 1L,
+            notes = "이전 노트",
+            creatorId = 1L,
+        )
+        val request = UpdateEventRequest(
+            title = "수정된 제목",
+            startTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 12, 0),
+            locationId = 2L,
+            notes = "수정된 노트",
+            participantIds = listOf(3L),
+        )
+        `when`(locationReader.existsById(2L)).thenReturn(true)
+        `when`(userReader.findNotExistingIds(listOf(3L))).thenReturn(emptyList())
+        `when`(eventRepository.findById(1L)).thenReturn(Optional.of(existing))
+        `when`(eventRepository.saveAndFlush(existing)).thenReturn(existing)
+
+        val result = eventService.update(1L, request)
+
+        assertThat(result.title).isEqualTo("수정된 제목")
+        assertThat(result.locationId).isEqualTo(2L)
+        assertThat(result.notes).isEqualTo("수정된 노트")
+        assertThat(result.participants).hasSize(1)
+        assertThat(result.participants[0].userId).isEqualTo(3L)
+    }
+
+    @Test
+    fun `존재하지 않는 이벤트 수정 시 NOT_FOUND 예외를 던진다`() {
+        val request = UpdateEventRequest(
+            title = "제목",
+            startTime = LocalDateTime.of(2026, 4, 21, 9, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+        )
+        `when`(eventRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val exception = assertThrows<BusinessException> { eventService.update(999L, request) }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.NOT_FOUND)
+    }
+
+    @Test
+    fun `수정 시 장소 중복 예약이면 CONFLICT 예외를 던진다`() {
+        val existing = Event(
+            id = 1L,
+            title = "제목",
+            startTime = LocalDateTime.of(2026, 4, 21, 9, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            locationId = 1L,
+            creatorId = 1L,
+        )
+        val request = UpdateEventRequest(
+            title = "제목",
+            startTime = LocalDateTime.of(2026, 4, 21, 9, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            locationId = 2L,
+        )
+        `when`(locationReader.existsById(2L)).thenReturn(true)
+        `when`(eventRepository.findById(1L)).thenReturn(Optional.of(existing))
+        `when`(eventRepository.saveAndFlush(existing))
+            .thenThrow(DataIntegrityViolationException("exclusion constraint violation"))
+
+        val exception = assertThrows<BusinessException> { eventService.update(1L, request) }
+
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.CONFLICT)
+    }
+
+    @Test
     fun `이벤트를 삭제한다`() {
         val event = Event(
             id = 1L,

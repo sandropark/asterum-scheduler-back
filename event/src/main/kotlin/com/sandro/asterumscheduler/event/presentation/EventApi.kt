@@ -15,6 +15,13 @@ interface EventApi {
     @SwaggerApiResponse(responseCode = "201", description = "성공")
     fun createEvent(request: CreateEventRequest): ApiResponse<EventResponse>
 
+    @Operation(summary = "이벤트 수정")
+    @SwaggerApiResponse(responseCode = "200", description = "성공")
+    fun updateEvent(
+        @PathVariable id: Long,
+        request: com.sandro.asterumscheduler.event.application.UpdateEventRequest
+    ): ApiResponse<EventResponse>
+
     @Operation(summary = "이벤트 삭제")
     @SwaggerApiResponse(responseCode = "204", description = "성공")
     fun deleteEvent(@PathVariable id: Long)
