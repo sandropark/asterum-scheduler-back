@@ -20,4 +20,6 @@ class Event(
     val rrule: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
-) : BaseEntity()
+) : BaseEntity() {
+    fun isRecurring(): Boolean = rrule != null
+}

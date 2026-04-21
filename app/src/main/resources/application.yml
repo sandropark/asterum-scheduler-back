@@ -8,3 +8,7 @@ spring:
         jdbc:
           batch_size: 100
     show-sql: true
+
+asterum:
+  event:
+    max-recurrence-years: 10 # 반복 일정 생성 최대 기간

@@ -18,6 +18,8 @@ data class EventCreateRequest(
     val endTime: LocalDateTime,
     val locationId: Long? = null,
     val notes: String? = null,
+    @field:Size(max = 500)
+    val rrule: String? = null,
 ) {
     @get:JsonIgnore
     @get:AssertTrue(message = "시작일시는 종료일시보다 이후일 수 없습니다.")
@@ -30,6 +32,7 @@ data class EventCreateRequest(
         endTime = endTime,
         locationId = locationId,
         notes = notes,
+        rrule = rrule,
         creatorId = creatorId,
     )
 }

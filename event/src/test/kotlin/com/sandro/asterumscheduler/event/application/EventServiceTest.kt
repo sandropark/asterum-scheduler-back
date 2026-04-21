@@ -8,20 +8,23 @@ import com.sandro.asterumscheduler.event.domain.EventInstances
 import com.sandro.asterumscheduler.event.domain.EventInstancesStatus
 import com.sandro.asterumscheduler.event.infra.EventInstancesRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @ExtendWith(MockitoExtension::class)
 class EventServiceTest {
@@ -35,8 +38,17 @@ class EventServiceTest {
     @Mock
     lateinit var locationReader: LocationReader
 
-    @InjectMocks
     lateinit var eventService: EventService
+
+    @BeforeEach
+    fun setUp() {
+        eventService = EventService(
+            eventRepository = eventRepository,
+            eventInstancesRepository = eventInstancesRepository,
+            locationReader = locationReader,
+            maxRecurrenceYears = 10L,
+        )
+    }
 
     @Test
     fun `장소가 없는 단일 일정을 생성하면 저장된 일정을 반환한다`() {
@@ -153,5 +165,68 @@ class EventServiceTest {
         verify(eventInstancesRepository).save(instanceCaptor.capture())
         assertEquals(EventInstancesStatus.CONFLICT, instanceCaptor.firstValue.status)
         assertEquals(locationId, instanceCaptor.firstValue.locationId)
+    }
+
+    @Test
+    fun `장소 없는 반복 일정 생성 시 rrule 전개하여 발생일마다 EventInstances 생성`() {
+        val creatorId = 1L
+        val request = EventCreateRequest(
+            title = "데일리 스크럼",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 10, 30),
+            rrule = "FREQ=DAILY;COUNT=3",
+        )
+        val savedEvent = Event(
+            id = 1L,
+            title = request.title,
+            startTime = request.startTime,
+            endTime = request.endTime,
+            rrule = request.rrule,
+            creatorId = creatorId,
+        )
+        whenever(eventRepository.save(any())).thenReturn(savedEvent)
+
+        eventService.create(creatorId, request)
+
+        val captor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(3)).save(captor.capture())
+        val instances = captor.allValues.sortedBy { it.startTime }
+        assertEquals(LocalDateTime.of(2026, 4, 20, 10, 0), instances[0].startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 21, 10, 0), instances[1].startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 22, 10, 0), instances[2].startTime)
+        instances.forEach {
+            assertEquals(EventInstancesStatus.CONFIRMED, it.status)
+            assertEquals(30, Duration.between(it.startTime, it.endTime).toMinutes())
+            assertNull(it.locationId)
+        }
+    }
+
+    @Test
+    fun `무기한 rrule은 최대 기간 10년 내 발생일만 전개`() {
+        val creatorId = 1L
+        val startTime = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val request = EventCreateRequest(
+            title = "무기한 데일리",
+            startTime = startTime,
+            endTime = startTime.plusMinutes(30),
+            rrule = "FREQ=DAILY",
+        )
+        val savedEvent = Event(
+            id = 1L,
+            title = request.title,
+            startTime = request.startTime,
+            endTime = request.endTime,
+            rrule = request.rrule,
+            creatorId = creatorId,
+        )
+        whenever(eventRepository.save(any())).thenReturn(savedEvent)
+
+        eventService.create(creatorId, request)
+
+        val captor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, org.mockito.kotlin.atLeastOnce()).save(captor.capture())
+        val cutoff = startTime.plusYears(10)
+        assertTrue(captor.allValues.all { !it.startTime.isAfter(cutoff) })
+        assertTrue(captor.allValues.any { it.startTime.toLocalDate() == cutoff.toLocalDate() })
     }
 }
