@@ -150,6 +150,7 @@ class EventService(
 
         when (scope) {
             RecurrenceScope.THIS_ONLY -> deleteSingleOccurrence(event, targetDate)
+            RecurrenceScope.ALL -> deleteAllOccurrences(event)
             else -> throw BusinessException(ErrorCode.INVALID_INPUT)
         }
     }
@@ -157,6 +158,13 @@ class EventService(
     private fun deleteSingleEvent(event: Event) {
         event.softDelete()
         eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)?.softDelete()
+    }
+
+    private fun deleteAllOccurrences(event: Event) {
+        val now = LocalDateTime.now()
+        event.softDelete(now)
+        eventOverrideRepository.findByEventId(event.id).forEach { it.softDelete(now) }
+        eventInstancesRepository.findByEventId(event.id).forEach { it.softDelete(now) }
     }
 
     private fun deleteSingleOccurrence(event: Event, targetDate: LocalDate?) {

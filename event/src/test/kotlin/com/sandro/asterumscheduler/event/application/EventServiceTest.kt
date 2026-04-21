@@ -950,6 +950,82 @@ class EventServiceTest {
     }
 
     @Test
+    fun `반복 일정 scope=ALL 삭제 시 Event 모든 Overrides 모든 Instances 에 deletedAt 설정`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val locationId = 5L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = locationId,
+            rrule = "FREQ=DAILY;COUNT=3",
+            creatorId = 1L,
+        )
+        val override1 = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 21),
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 21, 14, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 15, 0),
+            locationId = 7L,
+        )
+        val override2 = EventOverride(
+            id = 501L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 22),
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 22, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            locationId = locationId,
+        )
+        val instance1 = EventInstances(
+            id = 1000L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 20),
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = locationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance2 = EventInstances(
+            id = 1001L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 21),
+            startTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 11, 0),
+            locationId = locationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance3 = EventInstances(
+            id = 1002L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 22),
+            startTime = LocalDateTime.of(2026, 4, 22, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            locationId = locationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(listOf(override1, override2))
+        whenever(eventInstancesRepository.findByEventId(1L)).thenReturn(listOf(instance1, instance2, instance3))
+
+        eventService.delete(1L, RecurrenceScope.ALL)
+
+        assertNotNull(existingEvent.deletedAt)
+        assertNotNull(override1.deletedAt)
+        assertNotNull(override2.deletedAt)
+        assertNotNull(instance1.deletedAt)
+        assertNotNull(instance2.deletedAt)
+        assertNotNull(instance3.deletedAt)
+        verify(eventOverrideRepository, never()).save(any())
+        verify(eventInstancesRepository, never()).save(any())
+    }
+
+    @Test
     fun `반복 일정 scope=THIS_ONLY 삭제 시 targetDate 누락이면 INVALID_INPUT`() {
         val existingEvent = Event(
             id = 1L,
