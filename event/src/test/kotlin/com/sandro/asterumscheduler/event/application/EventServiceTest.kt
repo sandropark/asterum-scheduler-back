@@ -29,6 +29,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.Optional
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -533,7 +534,6 @@ class EventServiceTest {
             id = 500L,
             eventId = 1L,
             overrideDate = targetDate,
-            isDeleted = false,
             title = "새 제목",
             startTime = instanceStart,
             endTime = instanceEnd,
@@ -699,7 +699,6 @@ class EventServiceTest {
             id = 500L,
             eventId = 1L,
             overrideDate = targetDate,
-            isDeleted = false,
             title = "회의",
             startTime = newStart,
             endTime = newEnd,
@@ -761,7 +760,6 @@ class EventServiceTest {
             id = 500L,
             eventId = 1L,
             overrideDate = targetDate,
-            isDeleted = false,
             title = "회의",
             startTime = instanceStart,
             endTime = instanceEnd,
@@ -827,7 +825,6 @@ class EventServiceTest {
             id = 500L,
             eventId = 1L,
             overrideDate = targetDate,
-            isDeleted = false,
             title = "회의",
             startTime = instanceStart,
             endTime = instanceEnd,
@@ -854,6 +851,141 @@ class EventServiceTest {
         )
 
         assertEquals(EventInstancesStatus.CONFLICT, targetInstance.status)
+    }
+
+    @Test
+    fun `단일 일정 삭제 시 Event와 EventInstance에 deletedAt 설정`() {
+        val start = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val end = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = start,
+            endTime = end,
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = start.toLocalDate(),
+            startTime = start,
+            endTime = end,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.delete(1L)
+
+        assertNotNull(existingEvent.deletedAt)
+        assertNotNull(existingInstance.deletedAt)
+        verify(eventOverrideRepository, never()).save(any())
+    }
+
+    @Test
+    fun `존재하지 않는 일정을 삭제하면 NOT_FOUND 예외`() {
+        whenever(eventRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val ex = assertThrows<BusinessException> { eventService.delete(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 삭제 시 deletedAt 설정된 Override 생성하고 Instance에도 deletedAt 설정`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+        val locationId = 10L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = locationId,
+            notes = "원본 메모",
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = locationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val savedOverride = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = targetDate,
+            title = "회의",
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = locationId,
+            notes = "원본 메모",
+            deletedAt = LocalDateTime.now(),
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(eventOverrideRepository.save(any())).thenReturn(savedOverride)
+
+        eventService.delete(1L, RecurrenceScope.THIS_ONLY, targetDate)
+
+        val overrideCaptor = argumentCaptor<EventOverride>()
+        verify(eventOverrideRepository).save(overrideCaptor.capture())
+        assertNotNull(overrideCaptor.firstValue.deletedAt)
+        assertEquals(targetDate, overrideCaptor.firstValue.overrideDate)
+        assertEquals(1L, overrideCaptor.firstValue.eventId)
+        assertEquals(instanceStart, overrideCaptor.firstValue.startTime)
+        assertEquals(instanceEnd, overrideCaptor.firstValue.endTime)
+        assertEquals(locationId, overrideCaptor.firstValue.locationId)
+        assertEquals(500L, targetInstance.overrideId)
+        assertNotNull(targetInstance.deletedAt)
+        assertNull(existingEvent.deletedAt)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 삭제 시 targetDate 누락이면 INVALID_INPUT`() {
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+
+        val ex = assertThrows<BusinessException> {
+            eventService.delete(1L, RecurrenceScope.THIS_ONLY, null)
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verify(eventOverrideRepository, never()).save(any())
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 삭제 시 해당 날짜 인스턴스가 없으면 NOT_FOUND`() {
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetDate = LocalDate.of(2026, 4, 22)
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(null)
+
+        val ex = assertThrows<BusinessException> {
+            eventService.delete(1L, RecurrenceScope.THIS_ONLY, targetDate)
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+        verify(eventOverrideRepository, never()).save(any())
     }
 
     @Test

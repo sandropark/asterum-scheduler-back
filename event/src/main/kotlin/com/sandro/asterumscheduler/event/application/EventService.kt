@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Service
@@ -74,7 +75,6 @@ class EventService(
             EventOverride(
                 eventId = event.id,
                 overrideDate = targetDate,
-                isDeleted = false,
                 title = request.title,
                 startTime = request.startTime,
                 endTime = request.endTime,
@@ -101,6 +101,53 @@ class EventService(
             locationId, startTime, endTime, excludingInstanceId,
         )
         return if (hasConflict) EventInstancesStatus.CONFLICT else EventInstancesStatus.CONFIRMED
+    }
+
+    @Transactional
+    fun delete(
+        eventId: Long,
+        scope: RecurrenceScope = RecurrenceScope.ALL,
+        targetDate: LocalDate? = null,
+    ) {
+        val event = eventRepository.findById(eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        if (!event.isRecurring()) {
+            deleteSingleEvent(event)
+            return
+        }
+
+        when (scope) {
+            RecurrenceScope.THIS_ONLY -> deleteSingleOccurrence(event, targetDate)
+            else -> throw BusinessException(ErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun deleteSingleEvent(event: Event) {
+        event.softDelete()
+        eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)?.softDelete()
+    }
+
+    private fun deleteSingleOccurrence(event: Event, targetDate: LocalDate?) {
+        val date = targetDate ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+        val instance = eventInstancesRepository.findByEventIdAndDateKey(event.id, date)
+            ?: throw BusinessException(ErrorCode.NOT_FOUND)
+
+        val now = LocalDateTime.now()
+        val override = eventOverrideRepository.save(
+            EventOverride(
+                eventId = event.id,
+                overrideDate = date,
+                title = event.title,
+                startTime = instance.startTime,
+                endTime = instance.endTime,
+                locationId = instance.locationId,
+                notes = event.notes,
+                deletedAt = now,
+            )
+        )
+        instance.setOverride(override.id)
+        instance.softDelete(now)
     }
 
     @Transactional

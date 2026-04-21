@@ -2,11 +2,13 @@ package com.sandro.asterumscheduler.event.domain
 
 import com.sandro.asterumscheduler.common.BaseEntity
 import jakarta.persistence.*
+import org.hibernate.annotations.SQLRestriction
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Entity
 @Table(name = "event_overrides")
+@SQLRestriction("deleted_at IS NULL")
 class EventOverride(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
@@ -14,8 +16,6 @@ class EventOverride(
     val eventId: Long,
     @Column(nullable = false)
     val overrideDate: LocalDate,
-    @Column(nullable = false)
-    val isDeleted: Boolean = false,
     @Column(nullable = false, length = 255)
     val title: String,
     @Column(nullable = false)
@@ -24,4 +24,9 @@ class EventOverride(
     val endTime: LocalDateTime,
     val locationId: Long? = null,
     val notes: String? = null,
-) : BaseEntity()
+    var deletedAt: LocalDateTime? = null,
+) : BaseEntity() {
+    fun softDelete(now: LocalDateTime = LocalDateTime.now()) {
+        deletedAt = now
+    }
+}

@@ -28,6 +28,7 @@ interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
             SELECT EXISTS (
                 SELECT 1 FROM event_instances
                 WHERE location_id = :locationId
+                AND deleted_at IS NULL
                 AND tsrange(start_time, end_time, '[)') && tsrange(:start, :end, '[)')
             )
         """,
@@ -44,6 +45,7 @@ interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
             SELECT EXISTS (
                 SELECT 1 FROM event_instances
                 WHERE location_id = :locationId
+                AND deleted_at IS NULL
                 AND id <> :excludingInstanceId
                 AND tsrange(start_time, end_time, '[)') && tsrange(:start, :end, '[)')
             )

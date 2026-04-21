@@ -43,11 +43,13 @@ CREATE TABLE events
     notes       VARCHAR(500),
     rrule       VARCHAR(500),
     creator_id  BIGINT       NOT NULL,
+    deleted_at  TIMESTAMP,
     created_at  TIMESTAMP    NOT NULL,
     updated_at  TIMESTAMP    NOT NULL,
     created_by  BIGINT       NOT NULL,
     updated_by  BIGINT       NOT NULL
 );
+CREATE INDEX idx_events_active ON events (id) WHERE deleted_at IS NULL;
 
 CREATE TABLE event_participants
 (
@@ -66,18 +68,20 @@ CREATE TABLE event_overrides
     id            BIGSERIAL PRIMARY KEY,
     event_id      BIGINT    NOT NULL REFERENCES events (id),
     override_date DATE      NOT NULL,
-    is_deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
     title         VARCHAR(255) NOT NULL,
     start_time    TIMESTAMP NOT NULL,
     end_time      TIMESTAMP NOT NULL,
     location_id   BIGINT,
     notes         VARCHAR(500),
+    deleted_at    TIMESTAMP,
     created_at    TIMESTAMP NOT NULL,
     updated_at    TIMESTAMP NOT NULL,
     created_by    BIGINT    NOT NULL,
     updated_by    BIGINT    NOT NULL,
     CONSTRAINT uq_event_overrides UNIQUE (event_id, override_date)
 );
+CREATE INDEX idx_event_overrides_active
+    ON event_overrides (event_id, override_date) WHERE deleted_at IS NULL;
 
 CREATE TABLE event_instances
 (
@@ -89,6 +93,7 @@ CREATE TABLE event_instances
     start_time  TIMESTAMP   NOT NULL,
     end_time    TIMESTAMP   NOT NULL,
     status      VARCHAR(20) NOT NULL,
+    deleted_at  TIMESTAMP,
     created_at  TIMESTAMP   NOT NULL,
     updated_at  TIMESTAMP   NOT NULL,
     created_by  BIGINT      NOT NULL,
@@ -96,8 +101,10 @@ CREATE TABLE event_instances
 );
 CREATE INDEX idx_event_instances_location_range
     ON event_instances
-    USING gist (location_id, tsrange(start_time, end_time, '[)'));
-CREATE INDEX idx_event_instances_event ON event_instances (event_id);
+    USING gist (location_id, tsrange(start_time, end_time, '[)'))
+    WHERE deleted_at IS NULL;
+CREATE INDEX idx_event_instances_event
+    ON event_instances (event_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE sync_status
 (
