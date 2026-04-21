@@ -50,10 +50,10 @@ class EventService(
     private fun updateAllOccurrences(event: Event, request: EventUpdateRequest) {
         val timeChanged = request.startTime != event.startTime ||
             request.endTime != event.endTime
-        if (timeChanged) throw BusinessException(ErrorCode.INVALID_INPUT)
-
         val locationChanged = request.locationId != event.locationId
-        if (!locationChanged) {
+        val rruleChanged = request.rrule != null && request.rrule != event.rrule
+
+        if (!timeChanged && !locationChanged && !rruleChanged) {
             event.updateTitle(request.title)
             event.updateNotes(request.notes)
             eventOverrideRepository.findByEventId(event.id).forEach {
@@ -71,8 +71,10 @@ class EventService(
         eventInstancesRepository.flush()
 
         event.updateTitle(request.title)
+        event.updateTime(request.startTime, request.endTime)
         event.updateLocation(request.locationId)
         event.updateNotes(request.notes)
+        if (request.rrule != null) event.updateRrule(request.rrule)
 
         saveRecurringInstances(event)
     }

@@ -1177,33 +1177,115 @@ class EventServiceTest {
     }
 
     @Test
-    fun `반복 일정 scope=ALL 시간 변경 시 INVALID_INPUT`() {
+    fun `반복 일정 scope=ALL 시간 변경 시 모든 Overrides·Instances soft-delete 후 새 시간으로 재전개`() {
         val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
         val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val newStart = seriesStart.plusHours(2)
+        val newEnd = seriesEnd.plusHours(2)
+
         val existingEvent = Event(
             id = 1L,
             title = "회의",
             startTime = seriesStart,
             endTime = seriesEnd,
-            rrule = "FREQ=DAILY",
+            rrule = "FREQ=DAILY;COUNT=3",
+            creatorId = 1L,
+        )
+        val override1 = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 21),
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 21, 14, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 15, 0),
+        )
+        val instance1 = EventInstances(
+            id = 1000L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 20),
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance2 = EventInstances(
+            id = 1001L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 21),
+            startTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 11, 0),
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance3 = EventInstances(
+            id = 1002L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 22),
+            startTime = LocalDateTime.of(2026, 4, 22, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(listOf(override1))
+        whenever(eventInstancesRepository.findByEventId(1L)).thenReturn(listOf(instance1, instance2, instance3))
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = newStart,
+                endTime = newEnd,
+            ),
+            RecurrenceScope.ALL,
+        )
+
+        assertNotNull(override1.deletedAt)
+        assertNotNull(instance1.deletedAt)
+        assertNotNull(instance2.deletedAt)
+        assertNotNull(instance3.deletedAt)
+        verify(eventInstancesRepository).flush()
+        assertEquals(newStart, existingEvent.startTime)
+        assertEquals(newEnd, existingEvent.endTime)
+        assertEquals("FREQ=DAILY;COUNT=3", existingEvent.rrule)
+
+        val newInstanceCaptor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(3)).save(newInstanceCaptor.capture())
+        newInstanceCaptor.allValues.forEachIndexed { idx, instance ->
+            val expectedStart = newStart.plusDays(idx.toLong())
+            assertEquals(expectedStart, instance.startTime)
+            assertEquals(expectedStart.plusHours(1), instance.endTime)
+        }
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL rrule 변경 시 새 rrule 기준으로 재전개`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val newRrule = "FREQ=DAILY;COUNT=5"
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            rrule = "FREQ=DAILY;COUNT=3",
             creatorId = 1L,
         )
         whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(emptyList())
+        whenever(eventInstancesRepository.findByEventId(1L)).thenReturn(emptyList())
 
-        val ex = assertThrows<BusinessException> {
-            eventService.update(
-                1L,
-                EventUpdateRequest(
-                    title = "회의",
-                    startTime = seriesStart.plusHours(1),
-                    endTime = seriesEnd.plusHours(1),
-                ),
-                RecurrenceScope.ALL,
-            )
-        }
-        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
-        verifyNoInteractions(eventInstancesRepository)
-        verify(eventOverrideRepository, never()).findByEventId(any())
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = seriesStart,
+                endTime = seriesEnd,
+                rrule = newRrule,
+            ),
+            RecurrenceScope.ALL,
+        )
+
+        assertEquals(newRrule, existingEvent.rrule)
+        verify(eventInstancesRepository, times(5)).save(any())
     }
 
     @Test

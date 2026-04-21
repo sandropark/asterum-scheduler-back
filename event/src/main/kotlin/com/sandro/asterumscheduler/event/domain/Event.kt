@@ -19,7 +19,7 @@ class Event(
     var endTime: LocalDateTime,
     var locationId: Long? = null,
     var notes: String? = null,
-    val rrule: String? = null,
+    var rrule: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
     var deletedAt: LocalDateTime? = null,
@@ -41,6 +41,10 @@ class Event(
 
     fun updateLocation(newLocationId: Long?) {
         locationId = newLocationId
+    }
+
+    fun updateRrule(newRrule: String?) {
+        rrule = newRrule
     }
 
     fun softDelete(now: LocalDateTime = LocalDateTime.now()) {

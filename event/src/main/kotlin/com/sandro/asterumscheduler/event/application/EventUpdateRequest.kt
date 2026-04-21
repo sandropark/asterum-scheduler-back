@@ -19,6 +19,8 @@ data class EventUpdateRequest(
     val locationId: Long? = null,
     @field:Size(max = 500)
     val notes: String? = null,
+    @field:Size(max = 500)
+    val rrule: String? = null,
     val targetDate: LocalDate? = null,
 ) {
     @get:JsonIgnore
