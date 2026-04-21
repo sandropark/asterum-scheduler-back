@@ -357,6 +357,78 @@ class EventServiceTest {
     }
 
     @Test
+    fun `단일 일정 notes 수정 시 Event notes만 변경`() {
+        val originalStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val originalEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = originalStart,
+            endTime = originalEnd,
+            notes = "기존 메모",
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = originalStart.toLocalDate(),
+            startTime = originalStart,
+            endTime = originalEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = originalStart,
+                endTime = originalEnd,
+                notes = "새 메모",
+            ),
+        )
+
+        assertEquals("새 메모", existingEvent.notes)
+    }
+
+    @Test
+    fun `단일 일정 notes를 null로 수정하면 Event notes가 null로 변경`() {
+        val originalStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val originalEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = originalStart,
+            endTime = originalEnd,
+            notes = "기존 메모",
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = originalStart.toLocalDate(),
+            startTime = originalStart,
+            endTime = originalEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = originalStart,
+                endTime = originalEnd,
+                notes = null,
+            ),
+        )
+
+        assertNull(existingEvent.notes)
+    }
+
+    @Test
     fun `장소 없는 단일 일정 시간 수정 시 Event와 EventInstance 시간이 모두 변경`() {
         val existingEvent = Event(
             id = 1L,

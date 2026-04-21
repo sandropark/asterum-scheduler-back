@@ -27,6 +27,7 @@ class EventService(
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
         event.updateTitle(request.title)
         event.updateTime(request.startTime, request.endTime)
+        event.updateNotes(request.notes)
         eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)
             ?.updateTime(request.startTime, request.endTime)
     }

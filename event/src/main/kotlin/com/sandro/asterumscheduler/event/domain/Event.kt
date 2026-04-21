@@ -16,7 +16,7 @@ class Event(
     @Column(nullable = false)
     var endTime: LocalDateTime,
     val locationId: Long? = null,
-    val notes: String? = null,
+    var notes: String? = null,
     val rrule: String? = null,
     @Column(nullable = false)
     val creatorId: Long,
@@ -30,5 +30,9 @@ class Event(
     fun updateTime(newStartTime: LocalDateTime, newEndTime: LocalDateTime) {
         startTime = newStartTime
         endTime = newEndTime
+    }
+
+    fun updateNotes(newNotes: String?) {
+        notes = newNotes
     }
 }

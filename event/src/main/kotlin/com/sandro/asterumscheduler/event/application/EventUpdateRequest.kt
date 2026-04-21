@@ -15,6 +15,8 @@ data class EventUpdateRequest(
     val startTime: LocalDateTime,
     @field:NotNull
     val endTime: LocalDateTime,
+    @field:Size(max = 500)
+    val notes: String? = null,
 ) {
     @get:JsonIgnore
     @get:AssertTrue(message = "시작일시는 종료일시보다 이후일 수 없습니다.")
