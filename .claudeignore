@@ -1,0 +1,53 @@
+# 패키지 및 의존성
+node_modules/
+vendor/
+.venv/
+__pycache__/
+
+# 빌드 결과물
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Lock 파일
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+Gemfile.lock
+poetry.lock
+
+# 압축/난독화 파일
+*.min.js
+*.min.css
+*.bundle.js
+
+# 로그
+*.log
+logs/
+
+# 테스트 커버리지
+coverage/
+.nyc_output/
+
+# 환경변수 (어차피 읽으면 안 됨)
+.env
+.env.*
+
+# IDE 설정
+.idea/
+.vscode/
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# 바이너리/미디어 (읽어도 의미 없음)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+*.tar.gz
