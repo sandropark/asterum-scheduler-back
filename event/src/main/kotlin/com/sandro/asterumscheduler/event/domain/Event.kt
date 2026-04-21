@@ -10,7 +10,7 @@ class Event(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
     @Column(nullable = false, length = 255)
-    val title: String,
+    var title: String,
     @Column(nullable = false)
     val startTime: LocalDateTime,
     @Column(nullable = false)
@@ -22,4 +22,8 @@ class Event(
     val creatorId: Long,
 ) : BaseEntity() {
     fun isRecurring(): Boolean = rrule != null
+
+    fun updateTitle(newTitle: String) {
+        title = newTitle
+    }
 }

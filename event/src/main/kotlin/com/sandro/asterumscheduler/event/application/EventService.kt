@@ -22,6 +22,13 @@ class EventService(
     @Value("\${asterum.event.max-recurrence-years}") private val maxRecurrenceYears: Long,
 ) {
     @Transactional
+    fun update(eventId: Long, request: EventUpdateRequest) {
+        val event = eventRepository.findById(eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        event.updateTitle(request.title)
+    }
+
+    @Transactional
     fun create(creatorId: Long, request: EventCreateRequest): EventResponse {
         if (request.locationId != null && !locationReader.existsById(request.locationId))
             throw BusinessException(ErrorCode.NOT_FOUND)

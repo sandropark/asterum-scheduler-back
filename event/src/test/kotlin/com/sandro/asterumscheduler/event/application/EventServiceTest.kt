@@ -24,6 +24,7 @@ import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.Optional
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -301,5 +302,33 @@ class EventServiceTest {
         assertEquals(EventInstancesStatus.CONFIRMED, byDate[LocalDate.of(2026, 4, 20)]!!.status)
         assertEquals(EventInstancesStatus.CONFLICT, byDate[LocalDate.of(2026, 4, 21)]!!.status)
         assertEquals(EventInstancesStatus.CONFIRMED, byDate[LocalDate.of(2026, 4, 22)]!!.status)
+    }
+
+    @Test
+    fun `단일 일정 제목 수정 시 Events 제목만 변경되고 EventInstances는 그대로`() {
+        val existing = Event(
+            id = 1L,
+            title = "원래 제목",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existing))
+
+        eventService.update(1L, EventUpdateRequest(title = "새 제목"))
+
+        assertEquals("새 제목", existing.title)
+        verify(eventInstancesRepository, never()).save(any())
+    }
+
+    @Test
+    fun `존재하지 않는 일정을 수정하면 NOT_FOUND 예외`() {
+        whenever(eventRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(999L, EventUpdateRequest(title = "새 제목"))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+        verify(eventInstancesRepository, never()).save(any())
     }
 }
