@@ -6,7 +6,10 @@ import com.sandro.asterumscheduler.common.location.LocationReader
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstances
 import com.sandro.asterumscheduler.event.domain.EventInstancesStatus
+import com.sandro.asterumscheduler.event.domain.EventOverride
+import com.sandro.asterumscheduler.event.domain.RecurrenceScope
 import com.sandro.asterumscheduler.event.infra.EventInstancesRepository
+import com.sandro.asterumscheduler.event.infra.EventOverrideRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -41,6 +44,9 @@ class EventServiceTest {
     @Mock
     lateinit var locationReader: LocationReader
 
+    @Mock
+    lateinit var eventOverrideRepository: EventOverrideRepository
+
     lateinit var eventService: EventService
 
     @BeforeEach
@@ -49,6 +55,7 @@ class EventServiceTest {
             eventRepository = eventRepository,
             eventInstancesRepository = eventInstancesRepository,
             locationReader = locationReader,
+            eventOverrideRepository = eventOverrideRepository,
             maxRecurrenceYears = 10L,
         )
     }
@@ -496,6 +503,90 @@ class EventServiceTest {
         assertEquals(newLocationId, existingEvent.locationId)
         assertEquals(newLocationId, existingInstance.locationId)
         assertEquals(EventInstancesStatus.CONFIRMED, existingInstance.status)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 제목 수정 시 Override 생성하고 Instance에 overrideId 연결`() {
+        val start = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val end = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "원래 제목",
+            startTime = start,
+            endTime = end,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val savedOverride = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = targetDate,
+            isDeleted = false,
+            title = "새 제목",
+            startTime = instanceStart,
+            endTime = instanceEnd,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(eventOverrideRepository.save(any())).thenReturn(savedOverride)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "새 제목",
+                startTime = instanceStart,
+                endTime = instanceEnd,
+                targetDate = targetDate,
+            ),
+            RecurrenceScope.THIS_ONLY,
+        )
+
+        val overrideCaptor = argumentCaptor<EventOverride>()
+        verify(eventOverrideRepository).save(overrideCaptor.capture())
+        assertEquals("새 제목", overrideCaptor.firstValue.title)
+        assertEquals(targetDate, overrideCaptor.firstValue.overrideDate)
+        assertEquals(1L, overrideCaptor.firstValue.eventId)
+        assertEquals(500L, targetInstance.overrideId)
+        assertEquals("원래 제목", existingEvent.title)
+    }
+
+    @Test
+    fun `scope=THIS_ONLY 인데 targetDate 누락 시 INVALID_INPUT`() {
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(
+                1L,
+                EventUpdateRequest(
+                    title = "회의",
+                    startTime = existingEvent.startTime,
+                    endTime = existingEvent.endTime,
+                    targetDate = null,
+                ),
+                RecurrenceScope.THIS_ONLY,
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
     }
 
     @Test

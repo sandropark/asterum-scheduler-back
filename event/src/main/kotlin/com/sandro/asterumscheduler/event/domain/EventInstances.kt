@@ -12,7 +12,7 @@ class EventInstances(
     val id: Long = 0,
     @Column(nullable = false)
     val eventId: Long,
-    val overrideId: Long? = null,
+    var overrideId: Long? = null,
     var locationId: Long? = null,
     @Column(nullable = false)
     var dateKey: LocalDate,
@@ -36,5 +36,9 @@ class EventInstances(
 
     fun updateStatus(newStatus: EventInstancesStatus) {
         status = newStatus
+    }
+
+    fun setOverride(overrideId: Long) {
+        this.overrideId = overrideId
     }
 }

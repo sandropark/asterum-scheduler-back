@@ -6,7 +6,10 @@ import com.sandro.asterumscheduler.common.location.LocationReader
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstances
 import com.sandro.asterumscheduler.event.domain.EventInstancesStatus
+import com.sandro.asterumscheduler.event.domain.EventOverride
+import com.sandro.asterumscheduler.event.domain.RecurrenceScope
 import com.sandro.asterumscheduler.event.infra.EventInstancesRepository
+import com.sandro.asterumscheduler.event.infra.EventOverrideRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -19,12 +22,30 @@ class EventService(
     private val eventRepository: EventRepository,
     private val eventInstancesRepository: EventInstancesRepository,
     private val locationReader: LocationReader,
+    private val eventOverrideRepository: EventOverrideRepository,
     @Value("\${asterum.event.max-recurrence-years}") private val maxRecurrenceYears: Long,
 ) {
     @Transactional
-    fun update(eventId: Long, request: EventUpdateRequest) {
+    fun update(
+        eventId: Long,
+        request: EventUpdateRequest,
+        scope: RecurrenceScope = RecurrenceScope.ALL,
+    ) {
         val event = eventRepository.findById(eventId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        if (!event.isRecurring()) {
+            updateSingleEvent(event, request)
+            return
+        }
+
+        when (scope) {
+            RecurrenceScope.THIS_ONLY -> updateSingleOccurrence(event, request)
+            else -> throw BusinessException(ErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun updateSingleEvent(event: Event, request: EventUpdateRequest) {
         if (request.locationId != null && !locationReader.existsById(request.locationId))
             throw BusinessException(ErrorCode.NOT_FOUND)
 
@@ -39,6 +60,26 @@ class EventService(
             it.updateLocation(request.locationId)
             it.updateStatus(newStatus)
         }
+    }
+
+    private fun updateSingleOccurrence(event: Event, request: EventUpdateRequest) {
+        val targetDate = request.targetDate ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+        val instance = eventInstancesRepository.findByEventIdAndDateKey(event.id, targetDate)
+            ?: throw BusinessException(ErrorCode.NOT_FOUND)
+
+        val override = eventOverrideRepository.save(
+            EventOverride(
+                eventId = event.id,
+                overrideDate = targetDate,
+                isDeleted = false,
+                title = request.title,
+                startTime = request.startTime,
+                endTime = request.endTime,
+                locationId = request.locationId,
+                notes = request.notes,
+            )
+        )
+        instance.setOverride(override.id)
     }
 
     private fun resolveStatusExcluding(

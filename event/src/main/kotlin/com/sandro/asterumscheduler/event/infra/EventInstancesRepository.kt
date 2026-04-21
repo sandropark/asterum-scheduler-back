@@ -4,11 +4,14 @@ import com.sandro.asterumscheduler.event.domain.EventInstances
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
 
     fun findFirstByEventIdAndOverrideIdIsNull(eventId: Long): EventInstances?
+
+    fun findByEventIdAndDateKey(eventId: Long, dateKey: LocalDate): EventInstances?
 
     @Query(
         "SELECT ei.locationId FROM EventInstances ei " +
