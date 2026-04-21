@@ -25,11 +25,33 @@ class EventService(
     fun update(eventId: Long, request: EventUpdateRequest) {
         val event = eventRepository.findById(eventId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        if (request.locationId != null && !locationReader.existsById(request.locationId))
+            throw BusinessException(ErrorCode.NOT_FOUND)
+
         event.updateTitle(request.title)
         event.updateTime(request.startTime, request.endTime)
         event.updateNotes(request.notes)
-        eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)
-            ?.updateTime(request.startTime, request.endTime)
+        event.updateLocation(request.locationId)
+
+        val newStatus = resolveStatusExcluding(request.locationId, request.startTime, request.endTime, event.id)
+        eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)?.also {
+            it.updateTime(request.startTime, request.endTime)
+            it.updateLocation(request.locationId)
+            it.updateStatus(newStatus)
+        }
+    }
+
+    private fun resolveStatusExcluding(
+        locationId: Long?,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+        excludingEventId: Long,
+    ): EventInstancesStatus {
+        if (locationId == null) return EventInstancesStatus.CONFIRMED
+        val hasConflict = eventInstancesRepository.existsOverlapByLocationExcludingEvent(
+            locationId, startTime, endTime, excludingEventId,
+        )
+        return if (hasConflict) EventInstancesStatus.CONFLICT else EventInstancesStatus.CONFIRMED
     }
 
     @Transactional

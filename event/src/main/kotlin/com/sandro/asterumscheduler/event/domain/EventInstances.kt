@@ -13,7 +13,7 @@ class EventInstances(
     @Column(nullable = false)
     val eventId: Long,
     val overrideId: Long? = null,
-    val locationId: Long? = null,
+    var locationId: Long? = null,
     @Column(nullable = false)
     var dateKey: LocalDate,
     @Column(nullable = false)
@@ -28,5 +28,13 @@ class EventInstances(
         startTime = newStartTime
         endTime = newEndTime
         dateKey = newStartTime.toLocalDate()
+    }
+
+    fun updateLocation(newLocationId: Long?) {
+        locationId = newLocationId
+    }
+
+    fun updateStatus(newStatus: EventInstancesStatus) {
+        status = newStatus
     }
 }

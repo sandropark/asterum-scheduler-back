@@ -15,6 +15,7 @@ data class EventUpdateRequest(
     val startTime: LocalDateTime,
     @field:NotNull
     val endTime: LocalDateTime,
+    val locationId: Long? = null,
     @field:Size(max = 500)
     val notes: String? = null,
 ) {

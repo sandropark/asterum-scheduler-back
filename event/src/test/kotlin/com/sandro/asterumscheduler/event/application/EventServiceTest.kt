@@ -429,6 +429,120 @@ class EventServiceTest {
     }
 
     @Test
+    fun `단일 일정 장소를 존재하지 않는 locationId로 수정하면 NOT_FOUND`() {
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(999L)).thenReturn(false)
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(
+                1L,
+                EventUpdateRequest(
+                    title = "회의",
+                    startTime = existingEvent.startTime,
+                    endTime = existingEvent.endTime,
+                    locationId = 999L,
+                ),
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `단일 일정 장소 추가 시 겹침 없으면 CONFIRMED + instance locationId 갱신`() {
+        val originalStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val originalEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val newLocationId = 10L
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = originalStart,
+            endTime = originalEnd,
+            locationId = null,
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = originalStart.toLocalDate(),
+            startTime = originalStart,
+            endTime = originalEnd,
+            locationId = null,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(
+            eventInstancesRepository.existsOverlapByLocationExcludingEvent(newLocationId, originalStart, originalEnd, 1L)
+        ).thenReturn(false)
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = originalStart,
+                endTime = originalEnd,
+                locationId = newLocationId,
+            ),
+        )
+
+        assertEquals(newLocationId, existingEvent.locationId)
+        assertEquals(newLocationId, existingInstance.locationId)
+        assertEquals(EventInstancesStatus.CONFIRMED, existingInstance.status)
+    }
+
+    @Test
+    fun `단일 일정 장소 수정 시 다른 일정과 겹치면 CONFLICT`() {
+        val originalStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val originalEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val newLocationId = 10L
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = originalStart,
+            endTime = originalEnd,
+            locationId = 5L,
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = originalStart.toLocalDate(),
+            startTime = originalStart,
+            endTime = originalEnd,
+            locationId = 5L,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(
+            eventInstancesRepository.existsOverlapByLocationExcludingEvent(newLocationId, originalStart, originalEnd, 1L)
+        ).thenReturn(true)
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = originalStart,
+                endTime = originalEnd,
+                locationId = newLocationId,
+            ),
+        )
+
+        assertEquals(newLocationId, existingEvent.locationId)
+        assertEquals(newLocationId, existingInstance.locationId)
+        assertEquals(EventInstancesStatus.CONFLICT, existingInstance.status)
+    }
+
+    @Test
     fun `장소 없는 단일 일정 시간 수정 시 Event와 EventInstance 시간이 모두 변경`() {
         val existingEvent = Event(
             id = 1L,
