@@ -13,6 +13,8 @@ interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
 
     fun findByEventIdAndDateKey(eventId: Long, dateKey: LocalDate): EventInstances?
 
+    fun findByEventId(eventId: Long): List<EventInstances>
+
     @Query(
         "SELECT ei.locationId FROM EventInstances ei " +
         "WHERE ei.locationId IS NOT NULL " +

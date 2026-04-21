@@ -48,16 +48,33 @@ class EventService(
     }
 
     private fun updateAllOccurrences(event: Event, request: EventUpdateRequest) {
-        val timeOrLocationChanged = request.startTime != event.startTime ||
-            request.endTime != event.endTime ||
-            request.locationId != event.locationId
-        if (timeOrLocationChanged) throw BusinessException(ErrorCode.INVALID_INPUT)
+        val timeChanged = request.startTime != event.startTime ||
+            request.endTime != event.endTime
+        if (timeChanged) throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        val locationChanged = request.locationId != event.locationId
+        if (!locationChanged) {
+            event.updateTitle(request.title)
+            event.updateNotes(request.notes)
+            eventOverrideRepository.findByEventId(event.id).forEach {
+                it.updateContents(request.title, request.notes)
+            }
+            return
+        }
+
+        if (request.locationId != null && !locationReader.existsById(request.locationId))
+            throw BusinessException(ErrorCode.NOT_FOUND)
+
+        val now = LocalDateTime.now()
+        eventOverrideRepository.findByEventId(event.id).forEach { it.softDelete(now) }
+        eventInstancesRepository.findByEventId(event.id).forEach { it.softDelete(now) }
+        eventInstancesRepository.flush()
 
         event.updateTitle(request.title)
+        event.updateLocation(request.locationId)
         event.updateNotes(request.notes)
-        eventOverrideRepository.findByEventId(event.id).forEach {
-            it.updateContents(request.title, request.notes)
-        }
+
+        saveRecurringInstances(event)
     }
 
     private fun updateSingleEvent(event: Event, request: EventUpdateRequest) {

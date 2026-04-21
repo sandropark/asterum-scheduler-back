@@ -1131,7 +1131,106 @@ class EventServiceTest {
     }
 
     @Test
-    fun `반복 일정 scope=ALL 장소 변경 시 INVALID_INPUT`() {
+    fun `반복 일정 scope=ALL 장소 변경 시 모든 Overrides·Instances soft-delete 후 새 장소로 재전개`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val oldLocationId = 5L
+        val newLocationId = 99L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = oldLocationId,
+            rrule = "FREQ=DAILY;COUNT=3",
+            creatorId = 1L,
+        )
+        val override1 = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 21),
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 21, 14, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 15, 0),
+            locationId = 7L,
+        )
+        val override2 = EventOverride(
+            id = 501L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 22),
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 22, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            locationId = oldLocationId,
+        )
+        val instance1 = EventInstances(
+            id = 1000L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 20),
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = oldLocationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance2 = EventInstances(
+            id = 1001L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 21),
+            startTime = LocalDateTime.of(2026, 4, 21, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 21, 11, 0),
+            locationId = oldLocationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val instance3 = EventInstances(
+            id = 1002L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 22),
+            startTime = LocalDateTime.of(2026, 4, 22, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 11, 0),
+            locationId = oldLocationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(listOf(override1, override2))
+        whenever(eventInstancesRepository.findByEventId(1L)).thenReturn(listOf(instance1, instance2, instance3))
+        whenever(eventInstancesRepository.existsOverlapByLocation(eq(newLocationId), any(), any())).thenReturn(false)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = seriesStart,
+                endTime = seriesEnd,
+                locationId = newLocationId,
+            ),
+            RecurrenceScope.ALL,
+        )
+
+        assertNotNull(override1.deletedAt)
+        assertNotNull(override2.deletedAt)
+        assertNotNull(instance1.deletedAt)
+        assertNotNull(instance2.deletedAt)
+        assertNotNull(instance3.deletedAt)
+        verify(eventInstancesRepository).flush()
+
+        assertEquals(newLocationId, existingEvent.locationId)
+        assertEquals(seriesStart, existingEvent.startTime)
+        assertEquals(seriesEnd, existingEvent.endTime)
+        assertEquals("FREQ=DAILY;COUNT=3", existingEvent.rrule)
+
+        val newInstanceCaptor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(3)).save(newInstanceCaptor.capture())
+        newInstanceCaptor.allValues.forEach {
+            assertEquals(newLocationId, it.locationId)
+            assertEquals(EventInstancesStatus.CONFIRMED, it.status)
+        }
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL 새 장소가 존재하지 않으면 NOT_FOUND`() {
         val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
         val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
         val existingEvent = Event(
@@ -1144,6 +1243,7 @@ class EventServiceTest {
             creatorId = 1L,
         )
         whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(99L)).thenReturn(false)
 
         val ex = assertThrows<BusinessException> {
             eventService.update(
@@ -1157,8 +1257,51 @@ class EventServiceTest {
                 RecurrenceScope.ALL,
             )
         }
-        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
-        verifyNoInteractions(eventInstancesRepository)
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
         verify(eventOverrideRepository, never()).findByEventId(any())
+        verify(eventInstancesRepository, never()).findByEventId(any())
+        verify(eventInstancesRepository, never()).flush()
+        verify(eventInstancesRepository, never()).save(any())
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL 장소 변경 시 새 장소에 다른 일정과 겹치면 CONFLICT 로 재생성`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val newLocationId = 99L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = 5L,
+            rrule = "FREQ=DAILY;COUNT=2",
+            creatorId = 1L,
+        )
+
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(emptyList())
+        whenever(eventInstancesRepository.findByEventId(1L)).thenReturn(emptyList())
+        whenever(eventInstancesRepository.existsOverlapByLocation(eq(newLocationId), any(), any())).thenReturn(true)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = seriesStart,
+                endTime = seriesEnd,
+                locationId = newLocationId,
+            ),
+            RecurrenceScope.ALL,
+        )
+
+        val newInstanceCaptor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(2)).save(newInstanceCaptor.capture())
+        newInstanceCaptor.allValues.forEach {
+            assertEquals(EventInstancesStatus.CONFLICT, it.status)
+            assertEquals(newLocationId, it.locationId)
+        }
     }
 }
