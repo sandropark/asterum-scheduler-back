@@ -8,6 +8,8 @@ import java.time.LocalDateTime
 
 interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
 
+    fun findFirstByEventIdAndOverrideIdIsNull(eventId: Long): EventInstances?
+
     @Query(
         "SELECT ei.locationId FROM EventInstances ei " +
         "WHERE ei.locationId IS NOT NULL " +

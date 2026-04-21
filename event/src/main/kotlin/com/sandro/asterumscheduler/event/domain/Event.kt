@@ -12,9 +12,9 @@ class Event(
     @Column(nullable = false, length = 255)
     var title: String,
     @Column(nullable = false)
-    val startTime: LocalDateTime,
+    var startTime: LocalDateTime,
     @Column(nullable = false)
-    val endTime: LocalDateTime,
+    var endTime: LocalDateTime,
     val locationId: Long? = null,
     val notes: String? = null,
     val rrule: String? = null,
@@ -25,5 +25,10 @@ class Event(
 
     fun updateTitle(newTitle: String) {
         title = newTitle
+    }
+
+    fun updateTime(newStartTime: LocalDateTime, newEndTime: LocalDateTime) {
+        startTime = newStartTime
+        endTime = newEndTime
     }
 }

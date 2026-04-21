@@ -306,19 +306,36 @@ class EventServiceTest {
 
     @Test
     fun `단일 일정 제목 수정 시 Events 제목만 변경되고 EventInstances는 그대로`() {
-        val existing = Event(
+        val originalStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val originalEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
             id = 1L,
             title = "원래 제목",
-            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
-            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            startTime = originalStart,
+            endTime = originalEnd,
             creatorId = 1L,
         )
-        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existing))
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = originalStart.toLocalDate(),
+            startTime = originalStart,
+            endTime = originalEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
 
-        eventService.update(1L, EventUpdateRequest(title = "새 제목"))
+        eventService.update(
+            1L,
+            EventUpdateRequest(title = "새 제목", startTime = originalStart, endTime = originalEnd),
+        )
 
-        assertEquals("새 제목", existing.title)
-        verify(eventInstancesRepository, never()).save(any())
+        assertEquals("새 제목", existingEvent.title)
+        assertEquals(originalStart, existingEvent.startTime)
+        assertEquals(originalEnd, existingEvent.endTime)
+        assertEquals(originalStart, existingInstance.startTime)
+        assertEquals(originalEnd, existingInstance.endTime)
     }
 
     @Test
@@ -326,9 +343,52 @@ class EventServiceTest {
         whenever(eventRepository.findById(999L)).thenReturn(Optional.empty())
 
         val ex = assertThrows<BusinessException> {
-            eventService.update(999L, EventUpdateRequest(title = "새 제목"))
+            eventService.update(
+                999L,
+                EventUpdateRequest(
+                    title = "새 제목",
+                    startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+                    endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+                ),
+            )
         }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
         verify(eventInstancesRepository, never()).save(any())
+    }
+
+    @Test
+    fun `장소 없는 단일 일정 시간 수정 시 Event와 EventInstance 시간이 모두 변경`() {
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            creatorId = 1L,
+        )
+        val existingInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = LocalDate.of(2026, 4, 20),
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = LocalDateTime.of(2026, 4, 21, 14, 0),
+                endTime = LocalDateTime.of(2026, 4, 21, 15, 0),
+            ),
+        )
+
+        assertEquals(LocalDateTime.of(2026, 4, 21, 14, 0), existingEvent.startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 21, 15, 0), existingEvent.endTime)
+        assertEquals(LocalDateTime.of(2026, 4, 21, 14, 0), existingInstance.startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 21, 15, 0), existingInstance.endTime)
+        assertEquals(LocalDate.of(2026, 4, 21), existingInstance.dateKey)
     }
 }
