@@ -4,6 +4,7 @@ import com.sandro.asterumscheduler.common.exception.BusinessException
 import com.sandro.asterumscheduler.common.exception.ErrorCode
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -145,6 +146,109 @@ class RRuleExpanderTest {
                 dtStart = ldt(2026, 4, 20),
                 rangeStart = ldt(2026, 4, 20),
                 rangeEnd = ldt(2026, 4, 21),
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `truncateUntilBefore - 무기한 rrule 에 UNTIL 부착`() {
+        val result = RRuleExpander.truncateUntilBefore("FREQ=DAILY", LocalDate.of(2026, 4, 22))
+
+        assertEquals("FREQ=DAILY;UNTIL=20260421T235959", result)
+    }
+
+    @Test
+    fun `truncateUntilBefore - 기존 UNTIL 은 새 UNTIL 로 교체된다`() {
+        val result = RRuleExpander.truncateUntilBefore(
+            "FREQ=DAILY;UNTIL=20260501T235959",
+            LocalDate.of(2026, 4, 22),
+        )
+
+        assertEquals("FREQ=DAILY;UNTIL=20260421T235959", result)
+    }
+
+    @Test
+    fun `truncateUntilBefore - 기존 COUNT 는 제거되고 UNTIL 이 부착된다`() {
+        val result = RRuleExpander.truncateUntilBefore(
+            "FREQ=DAILY;COUNT=10",
+            LocalDate.of(2026, 4, 22),
+        )
+
+        assertEquals("FREQ=DAILY;UNTIL=20260421T235959", result)
+    }
+
+    @Test
+    fun `truncateUntilBefore - 잘못된 rrule 은 INVALID_INPUT`() {
+        val ex = assertThrows<BusinessException> {
+            RRuleExpander.truncateUntilBefore("NOT_A_VALID_RULE", LocalDate.of(2026, 4, 22))
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - 무기한 rrule 은 입력 그대로 반환`() {
+        val result = RRuleExpander.forNewSeriesFrom(
+            "FREQ=DAILY",
+            ldt(2026, 4, 20, 10, 0),
+            LocalDate.of(2026, 4, 22),
+        )
+
+        assertEquals("FREQ=DAILY", result)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - UNTIL rrule 은 입력 그대로 반환`() {
+        val result = RRuleExpander.forNewSeriesFrom(
+            "FREQ=DAILY;UNTIL=20260501T235959",
+            ldt(2026, 4, 20, 10, 0),
+            LocalDate.of(2026, 4, 22),
+        )
+
+        assertEquals("FREQ=DAILY;UNTIL=20260501T235959", result)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - DAILY COUNT 는 선택일 이전 발생 횟수만큼 차감된다`() {
+        val result = RRuleExpander.forNewSeriesFrom(
+            "FREQ=DAILY;COUNT=5",
+            ldt(2026, 4, 20, 10, 0),
+            LocalDate.of(2026, 4, 22),
+        )
+
+        assertEquals("FREQ=DAILY;COUNT=3", result)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - WEEKLY BYDAY COUNT 는 BYDAY 기준 발생 횟수로 계산된다`() {
+        val result = RRuleExpander.forNewSeriesFrom(
+            "FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=10",
+            ldt(2026, 4, 20, 10, 0),
+            LocalDate.of(2026, 4, 27),
+        )
+
+        assertEquals("FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=7", result)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - 남은 횟수가 0 이하면 INVALID_INPUT`() {
+        val ex = assertThrows<BusinessException> {
+            RRuleExpander.forNewSeriesFrom(
+                "FREQ=DAILY;COUNT=3",
+                ldt(2026, 4, 20, 10, 0),
+                LocalDate.of(2026, 4, 25),
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `forNewSeriesFrom - 잘못된 rrule 은 INVALID_INPUT`() {
+        val ex = assertThrows<BusinessException> {
+            RRuleExpander.forNewSeriesFrom(
+                "NOT_A_VALID_RULE",
+                ldt(2026, 4, 20, 10, 0),
+                LocalDate.of(2026, 4, 22),
             )
         }
         assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)

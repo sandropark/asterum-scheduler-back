@@ -13,7 +13,7 @@ class EventInstances(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
     @Column(nullable = false)
-    val eventId: Long,
+    var eventId: Long,
     var overrideId: Long? = null,
     var locationId: Long? = null,
     @Column(nullable = false)
@@ -43,6 +43,10 @@ class EventInstances(
 
     fun setOverride(overrideId: Long) {
         this.overrideId = overrideId
+    }
+
+    fun updateEventId(newEventId: Long) {
+        eventId = newEventId
     }
 
     fun softDelete(now: LocalDateTime = LocalDateTime.now()) {

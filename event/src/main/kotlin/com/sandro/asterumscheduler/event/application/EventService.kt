@@ -42,9 +42,46 @@ class EventService(
 
         when (scope) {
             RecurrenceScope.THIS_ONLY -> updateSingleOccurrence(event, request)
+            RecurrenceScope.THIS_AND_FUTURE -> updateThisAndFutureOccurrences(event, request)
             RecurrenceScope.ALL -> updateAllOccurrences(event, request)
-            else -> throw BusinessException(ErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun updateThisAndFutureOccurrences(event: Event, request: EventUpdateRequest) {
+        val date = request.targetDate ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+        if (!date.isAfter(event.startTime.toLocalDate()))
+            throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        val timeChanged = request.startTime != event.startTime || request.endTime != event.endTime
+        val locationChanged = request.locationId != event.locationId
+        val rruleChanged = request.rrule != null && request.rrule != event.rrule
+        if (timeChanged || locationChanged || rruleChanged)
+            throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        eventInstancesRepository.findByEventIdAndDateKey(event.id, date)
+            ?: throw BusinessException(ErrorCode.NOT_FOUND)
+
+        val newDtStart = LocalDateTime.of(date, event.startTime.toLocalTime())
+        val newDtEnd = newDtStart.plus(Duration.between(event.startTime, event.endTime))
+        val newEvent = eventRepository.save(
+            Event(
+                title = request.title,
+                startTime = newDtStart,
+                endTime = newDtEnd,
+                locationId = event.locationId,
+                notes = request.notes,
+                rrule = RRuleExpander.forNewSeriesFrom(event.rrule!!, event.startTime, date),
+                creatorId = event.creatorId,
+            )
+        )
+        event.updateRrule(RRuleExpander.truncateUntilBefore(event.rrule!!, date))
+
+        eventOverrideRepository.findByEventId(event.id)
+            .filter { !it.overrideDate.isBefore(date) }
+            .forEach { it.updateEventId(newEvent.id) }
+        eventInstancesRepository.findByEventId(event.id)
+            .filter { !it.dateKey.isBefore(date) }
+            .forEach { it.updateEventId(newEvent.id) }
     }
 
     private fun updateAllOccurrences(event: Event, request: EventUpdateRequest) {

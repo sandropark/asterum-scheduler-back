@@ -13,7 +13,7 @@ class EventOverride(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
     @Column(nullable = false)
-    val eventId: Long,
+    var eventId: Long,
     @Column(nullable = false)
     val overrideDate: LocalDate,
     @Column(nullable = false, length = 255)
@@ -33,5 +33,9 @@ class EventOverride(
     fun updateContents(newTitle: String, newNotes: String?) {
         title = newTitle
         notes = newNotes
+    }
+
+    fun updateEventId(newEventId: Long) {
+        eventId = newEventId
     }
 }

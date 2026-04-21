@@ -37,6 +37,26 @@ object RRuleExpander {
             .filter { !it.isAfter(rangeEnd) }
     }
 
+    fun forNewSeriesFrom(rrule: String, originalDtStart: LocalDateTime, fromDate: LocalDate): String {
+        try {
+            RecurrenceRule(rrule)
+        } catch (e: InvalidRecurrenceRuleException) {
+            throw BusinessException(ErrorCode.INVALID_INPUT, e)
+        }
+        val parts = rrule.split(";")
+        val countPart = parts.firstOrNull { it.startsWith("COUNT=") } ?: return rrule
+
+        val originalCount = countPart.removePrefix("COUNT=").toInt()
+        val occurrencesBefore = expand(
+            rrule, originalDtStart, originalDtStart, fromDate.atStartOfDay().minusSeconds(1)
+        ).size
+        val newCount = originalCount - occurrencesBefore
+        if (newCount <= 0) throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        val keptParts = parts.filterNot { it.startsWith("COUNT=") }
+        return (keptParts + "COUNT=$newCount").joinToString(";")
+    }
+
     fun truncateUntilBefore(rrule: String, exclusiveDate: LocalDate): String {
         try {
             RecurrenceRule(rrule)
