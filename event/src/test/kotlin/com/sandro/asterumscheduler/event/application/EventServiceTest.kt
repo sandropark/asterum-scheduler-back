@@ -16,11 +16,13 @@ import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -228,5 +230,76 @@ class EventServiceTest {
         val cutoff = startTime.plusYears(10)
         assertTrue(captor.allValues.all { !it.startTime.isAfter(cutoff) })
         assertTrue(captor.allValues.any { it.startTime.toLocalDate() == cutoff.toLocalDate() })
+    }
+
+    @Test
+    fun `장소 있는 반복 일정 - 겹침 없으면 모든 인스턴스 CONFIRMED`() {
+        val creatorId = 1L
+        val locationId = 10L
+        val request = EventCreateRequest(
+            title = "매일 회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            locationId = locationId,
+            rrule = "FREQ=DAILY;COUNT=3",
+        )
+        val savedEvent = Event(
+            id = 1L,
+            title = request.title,
+            startTime = request.startTime,
+            endTime = request.endTime,
+            locationId = locationId,
+            rrule = request.rrule,
+            creatorId = creatorId,
+        )
+        whenever(locationReader.existsById(locationId)).thenReturn(true)
+        whenever(eventRepository.save(any())).thenReturn(savedEvent)
+        whenever(eventInstancesRepository.existsOverlapByLocation(eq(locationId), any(), any())).thenReturn(false)
+
+        eventService.create(creatorId, request)
+
+        val captor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(3)).save(captor.capture())
+        captor.allValues.forEach {
+            assertEquals(EventInstancesStatus.CONFIRMED, it.status)
+            assertEquals(locationId, it.locationId)
+        }
+    }
+
+    @Test
+    fun `장소 있는 반복 일정 - 일부 날짜만 겹치면 해당 인스턴스만 CONFLICT`() {
+        val creatorId = 1L
+        val locationId = 10L
+        val conflictStart = LocalDateTime.of(2026, 4, 21, 10, 0)
+        val conflictEnd = LocalDateTime.of(2026, 4, 21, 11, 0)
+        val request = EventCreateRequest(
+            title = "매일 회의",
+            startTime = LocalDateTime.of(2026, 4, 20, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 20, 11, 0),
+            locationId = locationId,
+            rrule = "FREQ=DAILY;COUNT=3",
+        )
+        val savedEvent = Event(
+            id = 1L,
+            title = request.title,
+            startTime = request.startTime,
+            endTime = request.endTime,
+            locationId = locationId,
+            rrule = request.rrule,
+            creatorId = creatorId,
+        )
+        whenever(locationReader.existsById(locationId)).thenReturn(true)
+        whenever(eventRepository.save(any())).thenReturn(savedEvent)
+        whenever(eventInstancesRepository.existsOverlapByLocation(eq(locationId), any(), any())).thenReturn(false)
+        whenever(eventInstancesRepository.existsOverlapByLocation(locationId, conflictStart, conflictEnd)).thenReturn(true)
+
+        eventService.create(creatorId, request)
+
+        val captor = argumentCaptor<EventInstances>()
+        verify(eventInstancesRepository, times(3)).save(captor.capture())
+        val byDate = captor.allValues.associateBy { it.startTime.toLocalDate() }
+        assertEquals(EventInstancesStatus.CONFIRMED, byDate[LocalDate.of(2026, 4, 20)]!!.status)
+        assertEquals(EventInstancesStatus.CONFLICT, byDate[LocalDate.of(2026, 4, 21)]!!.status)
+        assertEquals(EventInstancesStatus.CONFIRMED, byDate[LocalDate.of(2026, 4, 22)]!!.status)
     }
 }
