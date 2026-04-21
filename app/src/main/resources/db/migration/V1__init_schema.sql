@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 CREATE TABLE teams
 (
     id         BIGSERIAL PRIMARY KEY,
@@ -39,6 +41,7 @@ CREATE TABLE events
     end_time    TIMESTAMP    NOT NULL,
     location_id BIGINT,
     notes       VARCHAR(500),
+    rrule       VARCHAR(500),
     creator_id  BIGINT       NOT NULL,
     created_at  TIMESTAMP    NOT NULL,
     updated_at  TIMESTAMP    NOT NULL,
@@ -91,5 +94,13 @@ CREATE TABLE event_instances
     created_by  BIGINT      NOT NULL,
     updated_by  BIGINT      NOT NULL
 );
-CREATE INDEX idx_event_instances_resource_date ON event_instances (resource_id, date_key);
+CREATE INDEX idx_event_instances_location_range
+    ON event_instances
+    USING gist (location_id, tsrange(start_time, end_time, '[)'));
 CREATE INDEX idx_event_instances_event ON event_instances (event_id);
+
+CREATE TABLE sync_status
+(
+    date_key     DATE PRIMARY KEY,
+    is_generated BOOLEAN NOT NULL DEFAULT FALSE
+);
