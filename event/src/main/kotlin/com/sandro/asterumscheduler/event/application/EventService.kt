@@ -152,9 +152,26 @@ class EventService(
 
         when (scope) {
             RecurrenceScope.THIS_ONLY -> deleteSingleOccurrence(event, targetDate)
+            RecurrenceScope.THIS_AND_FUTURE -> deleteThisAndFutureOccurrences(event, targetDate)
             RecurrenceScope.ALL -> deleteAllOccurrences(event)
-            else -> throw BusinessException(ErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun deleteThisAndFutureOccurrences(event: Event, targetDate: LocalDate?) {
+        val date = targetDate ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+        if (!date.isAfter(event.startTime.toLocalDate()))
+            throw BusinessException(ErrorCode.INVALID_INPUT)
+        eventInstancesRepository.findByEventIdAndDateKey(event.id, date)
+            ?: throw BusinessException(ErrorCode.NOT_FOUND)
+
+        val now = LocalDateTime.now()
+        event.updateRrule(RRuleExpander.truncateUntilBefore(event.rrule!!, date))
+        eventOverrideRepository.findByEventId(event.id)
+            .filter { !it.overrideDate.isBefore(date) }
+            .forEach { it.softDelete(now) }
+        eventInstancesRepository.findByEventId(event.id)
+            .filter { !it.dateKey.isBefore(date) }
+            .forEach { it.softDelete(now) }
     }
 
     private fun deleteSingleEvent(event: Event) {
