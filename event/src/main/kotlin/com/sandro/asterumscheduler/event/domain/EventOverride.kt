@@ -17,16 +17,21 @@ class EventOverride(
     @Column(nullable = false)
     val overrideDate: LocalDate,
     @Column(nullable = false, length = 255)
-    val title: String,
+    var title: String,
     @Column(nullable = false)
     val startTime: LocalDateTime,
     @Column(nullable = false)
     val endTime: LocalDateTime,
     val locationId: Long? = null,
-    val notes: String? = null,
+    var notes: String? = null,
     var deletedAt: LocalDateTime? = null,
 ) : BaseEntity() {
     fun softDelete(now: LocalDateTime = LocalDateTime.now()) {
         deletedAt = now
+    }
+
+    fun updateContents(newTitle: String, newNotes: String?) {
+        title = newTitle
+        notes = newNotes
     }
 }

@@ -23,6 +23,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.time.LocalDate
@@ -1031,5 +1032,133 @@ class EventServiceTest {
         }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
         verify(eventOverrideRepository, never()).save(any())
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL 제목·메모 수정 시 Event와 모든 EventOverride가 일괄 갱신되고 EventInstance는 변화 없음`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val locationId = 5L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "원래 제목",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = locationId,
+            notes = "원래 메모",
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val override1 = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 22),
+            title = "원래 제목",
+            startTime = LocalDateTime.of(2026, 4, 22, 14, 0),
+            endTime = LocalDateTime.of(2026, 4, 22, 15, 0),
+            locationId = 7L,
+            notes = "원래 메모",
+        )
+        val override2 = EventOverride(
+            id = 501L,
+            eventId = 1L,
+            overrideDate = LocalDate.of(2026, 4, 24),
+            title = "기존에 따로 바뀐 제목",
+            startTime = LocalDateTime.of(2026, 4, 24, 10, 0),
+            endTime = LocalDateTime.of(2026, 4, 24, 11, 0),
+            locationId = locationId,
+            notes = "기존에 따로 바뀐 메모",
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventOverrideRepository.findByEventId(1L)).thenReturn(listOf(override1, override2))
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "새 제목",
+                startTime = seriesStart,
+                endTime = seriesEnd,
+                locationId = locationId,
+                notes = "새 메모",
+            ),
+            RecurrenceScope.ALL,
+        )
+
+        assertEquals("새 제목", existingEvent.title)
+        assertEquals("새 메모", existingEvent.notes)
+        assertEquals("새 제목", override1.title)
+        assertEquals("새 메모", override1.notes)
+        assertEquals(LocalDateTime.of(2026, 4, 22, 14, 0), override1.startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 22, 15, 0), override1.endTime)
+        assertEquals(7L, override1.locationId)
+        assertEquals("새 제목", override2.title)
+        assertEquals("새 메모", override2.notes)
+        assertEquals(LocalDateTime.of(2026, 4, 24, 10, 0), override2.startTime)
+        assertEquals(LocalDateTime.of(2026, 4, 24, 11, 0), override2.endTime)
+        assertEquals(locationId, override2.locationId)
+        verifyNoInteractions(eventInstancesRepository)
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL 시간 변경 시 INVALID_INPUT`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(
+                1L,
+                EventUpdateRequest(
+                    title = "회의",
+                    startTime = seriesStart.plusHours(1),
+                    endTime = seriesEnd.plusHours(1),
+                ),
+                RecurrenceScope.ALL,
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verifyNoInteractions(eventInstancesRepository)
+        verify(eventOverrideRepository, never()).findByEventId(any())
+    }
+
+    @Test
+    fun `반복 일정 scope=ALL 장소 변경 시 INVALID_INPUT`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = 5L,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(
+                1L,
+                EventUpdateRequest(
+                    title = "회의",
+                    startTime = seriesStart,
+                    endTime = seriesEnd,
+                    locationId = 99L,
+                ),
+                RecurrenceScope.ALL,
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verifyNoInteractions(eventInstancesRepository)
+        verify(eventOverrideRepository, never()).findByEventId(any())
     }
 }

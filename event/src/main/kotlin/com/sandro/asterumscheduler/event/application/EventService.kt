@@ -42,7 +42,21 @@ class EventService(
 
         when (scope) {
             RecurrenceScope.THIS_ONLY -> updateSingleOccurrence(event, request)
+            RecurrenceScope.ALL -> updateAllOccurrences(event, request)
             else -> throw BusinessException(ErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun updateAllOccurrences(event: Event, request: EventUpdateRequest) {
+        val timeOrLocationChanged = request.startTime != event.startTime ||
+            request.endTime != event.endTime ||
+            request.locationId != event.locationId
+        if (timeOrLocationChanged) throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        event.updateTitle(request.title)
+        event.updateNotes(request.notes)
+        eventOverrideRepository.findByEventId(event.id).forEach {
+            it.updateContents(request.title, request.notes)
         }
     }
 
