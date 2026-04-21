@@ -61,12 +61,10 @@
         - **참여자**
             - N명의 참여자 추가 가능.
             - 개인 또는 그룹 지정가능.
-        - **동시성 제어**
-            - 한 장소에는 복수의 일정이 잡히면 안된다.
-            - PostgreSQL Exclusion Constraint로 시간 범위 중복을 DB 레벨에서 원자적으로 차단
-              ```sql
-              EXCLUDE USING gist (location_id WITH =, tsrange(start_time, end_time) WITH &&)
-              ```
+        - **중복 전략 (Soft-Conflict)**
+            - 등록은 허용하되 겹치면 `EventInstances.status = CONFLICT` 로 표기 (Google Calendar 스타일)
+            - 판별식: `StartTime < NewEndTime AND EndTime > NewStartTime` (실제 구현은 `tsrange(start, end, '[)') &&`)
+            - 상세는 @docs/event_설계.md 참조
 
     - 일정 수정
         - 반복 일정 수정: scope: THIS_ONLY | THIS_AND_FUTURE | ALL
@@ -79,7 +77,8 @@
 
 - ## 인프라
     - psql
-    - Flyway는 추후 도입
+    - Redis (Redisson — 분산 락 · 멱등성)
+    - Flyway
 
 - 모듈
     - 도메인 별로 분리 (Gradle 멀티 모듈)
@@ -105,67 +104,80 @@
       └── presentation/
   ```
 
-### 반복 일정 DB 저장 전략: 하이브리드 방식
+### 반복 일정 설계 요약
 
-**템플릿(RRule) + 예외(Exception) 레코드** 구조를 사용한다.
+> 상세 설계는 `docs/event_설계.md`, 구현 현황은 `docs/event_진행상황.md` 참조. 본 문서는 architecture-level 핵심만 다룬다.
 
-#### 테이블 구조
+#### 데이터 모델 (4-table 하이브리드)
 
-```
-recurring_events (반복 규칙 템플릿)
-├── id
-├── title
-├── rrule          ← RFC 5545 형식 문자열 (e.g. "FREQ=WEEKLY;BYDAY=MO,WE")
-├── start_time
-├── end_time
-├── location_id
-└── notes
+- `Events` — 일정 본체 + RRule(RFC 5545) 규칙
+- `EventOverrides` — 반복 중 특정 날짜의 수정/삭제 기록 (`event_id`, `override_date`, `is_deleted`, 변경 필드)
+- `EventInstances` — **펼쳐진 인스턴스**. 조회·중복 체크의 유일한 기준
+  - `event_id` (원본 추적), `override_id` (예외 회차에만 채워짐)
+  - `status ∈ {CONFIRMED, CONFLICT}`
+    - 장소 없는 일정: 자동 `CONFIRMED`
+    - 장소 있는 일정: 같은 장소 + 시간 겹침이면 `CONFLICT`, 아니면 `CONFIRMED`
+- `SyncStatus(date_key, is_generated)` — 날짜별 전개 완료 플래그
 
-event_exceptions (개별 예외 레코드)
-├── id
-├── recurring_event_id → recurring_events.id
-├── original_date      ← 원래 이 날짜였던 것
-├── status             ← MODIFIED | DELETED
-├── title              ← override (수정된 경우)
-├── start_time         ← override
-└── end_time           ← override
-```
+RRule 계산은 `rrule4j` 라이브러리 활용.
 
-#### 조회 흐름 (월별 달력)
+#### 인스턴스 생성: Scheduler + On-demand
 
-1. `recurring_events`에서 해당 월 범위로 RRule 전개 → 가상 날짜 목록 생성
-2. `event_exceptions`에서 해당 `recurring_event_id`의 예외 조회
-3. 병합: `MODIFIED`는 예외 내용으로 대체, `DELETED`는 제외
+- **배치(자정)**: 향후 N년치 `EventInstances` 선제 생성 → `is_generated=TRUE`
+- **온디맨드**: 조회·생성 시 `is_generated=FALSE` 면 즉시 전개 (배치 누락·미래 조회 대응)
+- **선제적 다지기**: 일정 저장 트랜잭션 시작 전 해당 날짜의 `SyncStatus` 를 확인. 미생성이면 그 날짜의 반복 일정을 먼저 전개한 뒤 자기 일정 insert (반복 일정의 장소 선점 보장)
 
-- RRule 계산은 `rrule4j` 라이브러리 활용
+#### 중복 전략: Soft-Conflict
 
-#### 수정/삭제 범위별 처리
+- Google Calendar 스타일. 등록은 허용하되 겹치면 `status=CONFLICT` 로 저장.
+- 같은 장소 + 시간 겹침 판별식: `tsrange(start_time, end_time, '[)') && tsrange(:start, :end, '[)')` (PostgreSQL `tsrange` overlap, GiST 인덱스로 가속). 의미상 `StartTime < NewEndTime AND EndTime > NewStartTime` 와 동등.
+- 충돌 검사 시 같은 회차(자기 자신)는 instance id 기준으로 제외해야 함. `event_id` 기준 제외는 같은 반복 시리즈의 다른 회차 충돌을 놓침.
+- **PostgreSQL Exclusion Constraint 는 사용하지 않는다** (이전 설계에서 폐기 — soft-conflict 와 양립 불가).
 
-**수정**
+#### 타임존
 
-| 범위       | 처리 방식                                                               |
-|----------|---------------------------------------------------------------------|
-| 이 일정만    | `event_exceptions`에 `MODIFIED` 레코드 insert                           |
-| 이후 모든 일정 | 기존 `recurring_events` 종료일을 전날로 단축 + 변경 내용으로 새 `recurring_events` 생성 |
-| 전체 일정    | `recurring_events` update + 연관 `event_exceptions` 전체 delete         |
+- KST(Asia/Seoul) 단일 타임존만 지원. DB 에는 KST 기준 `TIMESTAMP` 그대로 저장. 변환 없음.
 
-**삭제**
+#### 동시성 & 멱등성
 
-| 범위       | 처리 방식                                                |
-|----------|------------------------------------------------------|
-| 이 일정만    | `event_exceptions`에 `DELETED` 레코드 insert             |
-| 이후 모든 일정 | 기존 `recurring_events` 종료일을 삭제 대상 전날로 단축              |
-| 전체 일정    | `recurring_events` + 연관 `event_exceptions` 전부 delete |
+- **분산 락**: Redisson, `location_id + date_key` 단위
+  `락 획득 → tx begin → r/w → tx commit → 락 해제`
+- **다일 예약**: `multiLock` 으로 여러 날짜 락을 한 번에 획득. 데드락 방지를 위해 항상 날짜 오름차순으로 락
+- **장소 없는 일정**: 분산락 불필요. 트랜잭션만으로 처리
+- **따닥 방지**: idempotency-key 헤더 또는 Redis `UserId+Action` 1~2s TTL
+
+#### 수정 범위 (scope)
+
+| scope | 처리 요약 |
+|---|---|
+| `THIS_ONLY` | `EventOverrides` insert + 해당 `EventInstances` 의 `override_id` · 시간 · 장소 · 상태 동기화 |
+| `THIS_AND_FUTURE` | 기존 `Events.rrule` `UNTIL` 을 선택일 전날로 단축 + 새 `Events` 생성. 선택일 이후 기존 `EventOverrides` soft-delete 후 새 `Events` 기준 재생성, `EventInstances` 삭제 후 재전개 |
+| `ALL` (제목/내용/사용자) | `Events` update + 해당 `Events` 의 모든 `EventOverrides` 의 동일 필드 일괄 수정 (시간 필드는 보존) |
+| `ALL` (시간/rrule/장소) | `Events` update + 해당 `Events` 의 모든 `EventOverrides` · `EventInstances` (과거 포함) soft-delete 후 재생성 |
+
+#### 삭제 (soft-delete)
+
+- 모든 삭제는 `deleted_at` 컬럼 설정 (1 년 경과 시 별도 archive 테이블 이전 또는 물리 삭제)
+- 단일 일정: `Events` · `EventInstances` 의 `deleted_at` 설정
+- `THIS_ONLY` 삭제: `EventOverrides` (`is_deleted=true`) insert + 해당 `EventInstances` 에 `override_id` 연결 후 `deleted_at` 설정 (반복 시리즈의 첫 회차를 지워도 시리즈 유지)
+- `THIS_AND_FUTURE` 삭제: `Events.rrule` 단축 + 선택일 이후 `EventOverrides` · `EventInstances` 의 `deleted_at` 설정
+- `ALL` 삭제: `Events` · `EventInstances` · `EventOverrides` 모두 `deleted_at` 설정
 
 #### 단일 → 반복 유형 전환
 
-- 기존 단일 이벤트를 `recurring_events`로 이전, 해당 일정을 첫 번째 발생일로 설정
+- 기존 단일 `Event` 에 rrule 추가 + 기존 `EventInstances` 삭제 후 반복 일정 기준으로 재전개
+
+#### 충돌 자동 승격
+
+- `CONFIRMED` 가 변경/삭제로 자리를 비우면, 같은 장소 · 시간의 `CONFLICT` 인스턴스 중 `Event.created_at` 오름차순으로 가장 빠른 1 건을 `CONFIRMED` 로 승격
+- 수정/삭제 트랜잭션 내에서 처리
 
 ### 연관관계
 
 - 사용자 1 : 일정 N
-- 장소 1 : 일정 N (중첩 X)
-- 반복규칙(recurring_events) 1 : 예외(event_exceptions) N
+- 장소 1 : 일정 N (soft-conflict 로 동시 등록은 허용, UI 경고)
+- `Events` 1 : `EventOverrides` N
+- `Events` 1 : `EventInstances` N
 
 
 
