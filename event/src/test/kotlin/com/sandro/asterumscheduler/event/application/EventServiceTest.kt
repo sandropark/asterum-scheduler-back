@@ -486,7 +486,7 @@ class EventServiceTest {
         whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
         whenever(locationReader.existsById(newLocationId)).thenReturn(true)
         whenever(
-            eventInstancesRepository.existsOverlapByLocationExcludingEvent(newLocationId, originalStart, originalEnd, 1L)
+            eventInstancesRepository.existsOverlapByLocationExcludingInstance(newLocationId, originalStart, originalEnd, 100L)
         ).thenReturn(false)
         whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
 
@@ -614,7 +614,7 @@ class EventServiceTest {
         whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
         whenever(locationReader.existsById(newLocationId)).thenReturn(true)
         whenever(
-            eventInstancesRepository.existsOverlapByLocationExcludingEvent(newLocationId, originalStart, originalEnd, 1L)
+            eventInstancesRepository.existsOverlapByLocationExcludingInstance(newLocationId, originalStart, originalEnd, 100L)
         ).thenReturn(true)
         whenever(eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(1L)).thenReturn(existingInstance)
 
@@ -667,5 +667,237 @@ class EventServiceTest {
         assertEquals(LocalDateTime.of(2026, 4, 21, 14, 0), existingInstance.startTime)
         assertEquals(LocalDateTime.of(2026, 4, 21, 15, 0), existingInstance.endTime)
         assertEquals(LocalDate.of(2026, 4, 21), existingInstance.dateKey)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 시간 수정 시 Override 생성하고 Instance 시간도 갱신`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+        val newStart = LocalDateTime.of(2026, 4, 23, 14, 0)
+        val newEnd = LocalDateTime.of(2026, 4, 23, 15, 0)
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val savedOverride = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = targetDate,
+            isDeleted = false,
+            title = "회의",
+            startTime = newStart,
+            endTime = newEnd,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(eventOverrideRepository.save(any())).thenReturn(savedOverride)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = newStart,
+                endTime = newEnd,
+                targetDate = targetDate,
+            ),
+            RecurrenceScope.THIS_ONLY,
+        )
+
+        val overrideCaptor = argumentCaptor<EventOverride>()
+        verify(eventOverrideRepository).save(overrideCaptor.capture())
+        assertEquals(newStart, overrideCaptor.firstValue.startTime)
+        assertEquals(newEnd, overrideCaptor.firstValue.endTime)
+        assertEquals(500L, targetInstance.overrideId)
+        assertEquals(newStart, targetInstance.startTime)
+        assertEquals(newEnd, targetInstance.endTime)
+        assertEquals(LocalDate.of(2026, 4, 23), targetInstance.dateKey)
+        assertEquals(seriesStart, existingEvent.startTime)
+        assertEquals(seriesEnd, existingEvent.endTime)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 장소 수정 시 Override 생성하고 Instance 장소도 갱신`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+        val newLocationId = 10L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = null,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val savedOverride = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = targetDate,
+            isDeleted = false,
+            title = "회의",
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = newLocationId,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(
+            eventInstancesRepository.existsOverlapByLocationExcludingInstance(newLocationId, instanceStart, instanceEnd, 100L)
+        ).thenReturn(false)
+        whenever(eventOverrideRepository.save(any())).thenReturn(savedOverride)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = instanceStart,
+                endTime = instanceEnd,
+                locationId = newLocationId,
+                targetDate = targetDate,
+            ),
+            RecurrenceScope.THIS_ONLY,
+        )
+
+        val overrideCaptor = argumentCaptor<EventOverride>()
+        verify(eventOverrideRepository).save(overrideCaptor.capture())
+        assertEquals(newLocationId, overrideCaptor.firstValue.locationId)
+        assertEquals(500L, targetInstance.overrideId)
+        assertEquals(newLocationId, targetInstance.locationId)
+        assertEquals(EventInstancesStatus.CONFIRMED, targetInstance.status)
+        assertNull(existingEvent.locationId)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 장소 변경 시 같은 반복 일정의 다른 회차와 충돌하면 CONFLICT`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+        val newLocationId = 10L
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            locationId = newLocationId,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = newLocationId,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        val savedOverride = EventOverride(
+            id = 500L,
+            eventId = 1L,
+            overrideDate = targetDate,
+            isDeleted = false,
+            title = "회의",
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            locationId = newLocationId,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(locationReader.existsById(newLocationId)).thenReturn(true)
+        whenever(
+            eventInstancesRepository.existsOverlapByLocationExcludingInstance(newLocationId, instanceStart, instanceEnd, 100L)
+        ).thenReturn(true)
+        whenever(eventOverrideRepository.save(any())).thenReturn(savedOverride)
+
+        eventService.update(
+            1L,
+            EventUpdateRequest(
+                title = "회의",
+                startTime = instanceStart,
+                endTime = instanceEnd,
+                locationId = newLocationId,
+                targetDate = targetDate,
+            ),
+            RecurrenceScope.THIS_ONLY,
+        )
+
+        assertEquals(EventInstancesStatus.CONFLICT, targetInstance.status)
+    }
+
+    @Test
+    fun `반복 일정 scope=THIS_ONLY 수정 시 존재하지 않는 장소면 NOT_FOUND`() {
+        val seriesStart = LocalDateTime.of(2026, 4, 20, 10, 0)
+        val seriesEnd = LocalDateTime.of(2026, 4, 20, 11, 0)
+        val targetDate = LocalDate.of(2026, 4, 22)
+        val instanceStart = LocalDateTime.of(2026, 4, 22, 10, 0)
+        val instanceEnd = LocalDateTime.of(2026, 4, 22, 11, 0)
+
+        val existingEvent = Event(
+            id = 1L,
+            title = "회의",
+            startTime = seriesStart,
+            endTime = seriesEnd,
+            rrule = "FREQ=DAILY",
+            creatorId = 1L,
+        )
+        val targetInstance = EventInstances(
+            id = 100L,
+            eventId = 1L,
+            dateKey = targetDate,
+            startTime = instanceStart,
+            endTime = instanceEnd,
+            status = EventInstancesStatus.CONFIRMED,
+        )
+        whenever(eventRepository.findById(1L)).thenReturn(Optional.of(existingEvent))
+        whenever(eventInstancesRepository.findByEventIdAndDateKey(1L, targetDate)).thenReturn(targetInstance)
+        whenever(locationReader.existsById(999L)).thenReturn(false)
+
+        val ex = assertThrows<BusinessException> {
+            eventService.update(
+                1L,
+                EventUpdateRequest(
+                    title = "회의",
+                    startTime = instanceStart,
+                    endTime = instanceEnd,
+                    locationId = 999L,
+                    targetDate = targetDate,
+                ),
+                RecurrenceScope.THIS_ONLY,
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+        verify(eventOverrideRepository, never()).save(any())
     }
 }

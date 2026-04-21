@@ -44,16 +44,16 @@ interface EventInstancesRepository : JpaRepository<EventInstances, Long> {
             SELECT EXISTS (
                 SELECT 1 FROM event_instances
                 WHERE location_id = :locationId
-                AND event_id <> :excludingEventId
+                AND id <> :excludingInstanceId
                 AND tsrange(start_time, end_time, '[)') && tsrange(:start, :end, '[)')
             )
         """,
         nativeQuery = true,
     )
-    fun existsOverlapByLocationExcludingEvent(
+    fun existsOverlapByLocationExcludingInstance(
         @Param("locationId") locationId: Long,
         @Param("start") start: LocalDateTime,
         @Param("end") end: LocalDateTime,
-        @Param("excludingEventId") excludingEventId: Long,
+        @Param("excludingInstanceId") excludingInstanceId: Long,
     ): Boolean
 }

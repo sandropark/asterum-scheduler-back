@@ -54,11 +54,12 @@ class EventService(
         event.updateNotes(request.notes)
         event.updateLocation(request.locationId)
 
-        val newStatus = resolveStatusExcluding(request.locationId, request.startTime, request.endTime, event.id)
         eventInstancesRepository.findFirstByEventIdAndOverrideIdIsNull(event.id)?.also {
             it.updateTime(request.startTime, request.endTime)
             it.updateLocation(request.locationId)
-            it.updateStatus(newStatus)
+            it.updateStatus(
+                resolveStatusExcluding(request.locationId, request.startTime, request.endTime, it.id)
+            )
         }
     }
 
@@ -66,6 +67,8 @@ class EventService(
         val targetDate = request.targetDate ?: throw BusinessException(ErrorCode.INVALID_INPUT)
         val instance = eventInstancesRepository.findByEventIdAndDateKey(event.id, targetDate)
             ?: throw BusinessException(ErrorCode.NOT_FOUND)
+        if (request.locationId != null && !locationReader.existsById(request.locationId))
+            throw BusinessException(ErrorCode.NOT_FOUND)
 
         val override = eventOverrideRepository.save(
             EventOverride(
@@ -80,17 +83,22 @@ class EventService(
             )
         )
         instance.setOverride(override.id)
+        instance.updateTime(request.startTime, request.endTime)
+        instance.updateLocation(request.locationId)
+        instance.updateStatus(
+            resolveStatusExcluding(request.locationId, request.startTime, request.endTime, instance.id)
+        )
     }
 
     private fun resolveStatusExcluding(
         locationId: Long?,
         startTime: LocalDateTime,
         endTime: LocalDateTime,
-        excludingEventId: Long,
+        excludingInstanceId: Long,
     ): EventInstancesStatus {
         if (locationId == null) return EventInstancesStatus.CONFIRMED
-        val hasConflict = eventInstancesRepository.existsOverlapByLocationExcludingEvent(
-            locationId, startTime, endTime, excludingEventId,
+        val hasConflict = eventInstancesRepository.existsOverlapByLocationExcludingInstance(
+            locationId, startTime, endTime, excludingInstanceId,
         )
         return if (hasConflict) EventInstancesStatus.CONFLICT else EventInstancesStatus.CONFIRMED
     }
