@@ -1,5 +1,7 @@
 package com.sandro.asterumscheduler.event.application
 
+import com.sandro.asterumscheduler.common.exception.BusinessException
+import com.sandro.asterumscheduler.common.exception.ErrorCode
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.assignIdForTest
@@ -10,7 +12,10 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
+import java.util.Optional
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class EventServiceTest {
 
@@ -50,4 +55,85 @@ class EventServiceTest {
         }
     }
 
+    @Test
+    fun `updateSingle - 같은 시간과 새 제목을 보내면 event_title 만 변경된다`() {
+        val (event, instance) = prepareSingle()
+        val origStart = event.startAt
+        val origEnd = event.endAt
+
+        service.updateSingle(
+            instance.id!!,
+            EventSingleUpdateRequest(title = "새 제목", startAt = origStart, endAt = origEnd),
+        )
+
+        assertEquals("새 제목", event.title)
+        assertEquals(origStart, event.startAt)
+        assertEquals(origEnd, event.endAt)
+        assertEquals(origStart, instance.startAt)
+        assertEquals(origEnd, instance.endAt)
+    }
+
+    @Test
+    fun `updateSingle - 새 시간을 보내면 event 와 instance 시간이 동기화된다`() {
+        val (event, instance) = prepareSingle()
+        val newStart = LocalDateTime.of(2026, 5, 2, 14, 0)
+        val newEnd = newStart.plusHours(2)
+
+        service.updateSingle(
+            instance.id!!,
+            EventSingleUpdateRequest(title = event.title, startAt = newStart, endAt = newEnd),
+        )
+
+        assertEquals(newStart, event.startAt)
+        assertEquals(newEnd, event.endAt)
+        assertEquals(newStart, instance.startAt)
+        assertEquals(newEnd, instance.endAt)
+    }
+
+    @Test
+    fun `updateSingle - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val ex = assertFailsWith<BusinessException> {
+            service.updateSingle(
+                999L,
+                EventSingleUpdateRequest(title = "x", startAt = start, endAt = start.plusHours(1)),
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `deleteSingle - event 와 instance 의 deletedAt 이 동일 시점으로 세팅된다`() {
+        val (event, instance) = prepareSingle()
+        assertEquals(null, event.deletedAt)
+        assertEquals(null, instance.deletedAt)
+
+        service.deleteSingle(instance.id!!)
+
+        assertNotNull(event.deletedAt)
+        assertNotNull(instance.deletedAt)
+        assertEquals(event.deletedAt, instance.deletedAt)
+    }
+
+    @Test
+    fun `deleteSingle - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.deleteSingle(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    private fun prepareSingle(): Pair<Event, EventInstance> {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "원본 제목", startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(100L) }
+        val instance = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt, title = null)
+            .also { it.assignIdForTest(10L) }
+        every { eventInstanceRepository.findById(10L) } returns Optional.of(instance)
+        every { eventRepository.findById(100L) } returns Optional.of(event)
+        return event to instance
+    }
 }
