@@ -57,13 +57,13 @@ class EventQueryServiceTest {
         ).also { it.assignIdForTest(2L) }
 
         every {
-            eventInstanceRepository.findByStartAtGreaterThanEqualAndStartAtLessThan(from, to)
+            eventInstanceRepository.findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(from, to)
         } returns listOf(instance1, instance2)
         every {
             eventRepository.findAllById(match<Iterable<Long>> { it.toSet() == setOf(10L, 20L) })
         } returns listOf(event1, event2)
 
-        val result = service.findMonthly(MonthlyEventQuery(from, to))
+        val result = service.findMonthly(MonthlyEventQuery(year = 2026, month = 5))
 
         assertEquals(2, result.size)
         assertEquals(
@@ -126,6 +126,7 @@ class EventQueryServiceTest {
                 title = "주간 회의",
                 startAt = startAt,
                 endAt = endAt,
+                eventStartAt = startAt,
                 rrule = "FREQ=WEEKLY;BYDAY=MO",
                 participants = emptyList(),
             ),

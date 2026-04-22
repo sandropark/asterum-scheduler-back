@@ -46,13 +46,13 @@ class EventRecurringDeleteIT @Autowired constructor(
 
         service.deleteAll(
             eventInstanceRepository
-                .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+                .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
                 .first { it.eventId == event.id }.id!!
         )
         em.flush(); em.clear()
 
         val remaining = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
         assertEquals(0, remaining.size)
         assertFalse(eventRepository.findById(event.id!!).isPresent)
@@ -83,7 +83,7 @@ class EventRecurringDeleteIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, instances.size)
@@ -93,7 +93,7 @@ class EventRecurringDeleteIT @Autowired constructor(
         em.flush(); em.clear()
 
         val remaining = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(2, remaining.size)
@@ -121,7 +121,7 @@ class EventRecurringDeleteIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(5, instances.size)
@@ -132,7 +132,7 @@ class EventRecurringDeleteIT @Autowired constructor(
         em.flush(); em.clear()
 
         val remaining = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(2, remaining.size)

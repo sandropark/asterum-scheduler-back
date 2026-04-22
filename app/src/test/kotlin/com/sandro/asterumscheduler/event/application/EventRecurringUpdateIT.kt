@@ -41,7 +41,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, instances.size)
@@ -59,7 +59,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals(newEnd, reloadedMiddle.endAt)
 
         val others = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id && it.id != middleId }
             .sortedBy { it.startAt }
         assertEquals(2, others.size)
@@ -87,7 +87,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val original = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, original.size)
@@ -95,7 +95,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         service.deleteThisOnly(original[2].id!!)
         em.flush(); em.clear()
 
-        val newStart = LocalDateTime.of(2026, 10, 5, 14, 0)
+        val newStart = LocalDateTime.of(2026, 9, 1, 14, 0)
         val newEnd = newStart.plusHours(2)
         val newRrule = "FREQ=WEEKLY;COUNT=2"
         service.updateAllTime(
@@ -110,7 +110,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals(newRrule, persistedEvent.rrule)
 
         val regenerated = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(newStart, newStart.plusDays(30))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(newStart, newStart.plusDays(30))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(2, regenerated.size)
@@ -144,7 +144,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == oldEvent.id }
             .sortedBy { it.startAt }
         assertEquals(5, instances.size)
@@ -182,7 +182,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals(newRrule, newEvent.rrule)
 
         val oldSide = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(30))
             .filter { it.eventId == oldEvent.id }
             .sortedBy { it.startAt }
         assertEquals(2, oldSide.size)
@@ -190,7 +190,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals(start.plusDays(1), oldSide[1].startAt)
 
         val newSide = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(newStart, newStart.plusDays(30))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(newStart, newStart.plusDays(30))
             .filter { it.eventId == newEvent.id }
             .sortedBy { it.startAt }
         assertEquals(2, newSide.size)
@@ -214,65 +214,43 @@ class EventRecurringUpdateIT @Autowired constructor(
     }
 
     @Test
-    fun `updateTitleThisAndFuture - old event rrule 단축 + 신규 event 생성 + target 이후 instance 가 신규 event 로 이동하고 title null 리셋`() {
+    fun `updateTitleThisAndFuture - target 이후 instance 들의 title 이 새 값으로 덮어쓰이고 이전 instance 는 유지된다`() {
         val start = LocalDateTime.of(2026, 11, 1, 10, 0)
         val end = start.plusHours(1)
 
-        val oldEvent = service.create(
+        val event = service.create(
             EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=5")
         )
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
-            .filter { it.eventId == oldEvent.id }
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(5, instances.size)
 
-        service.updateThisOnly(
-            instances[2].id!!,
-            EventThisOnlyUpdateRequest("오버라이드", instances[2].startAt, instances[2].endAt),
-        )
-        em.flush(); em.clear()
-
-        val targetId = instances[2].id!!
-        val targetStart = instances[2].startAt
         service.updateTitleThisAndFuture(
-            targetId,
+            instances[2].id!!,
             EventThisAndFutureTitleUpdateRequest("새 제목"),
         )
         em.flush(); em.clear()
 
-        val persistedOld = eventRepository.findById(oldEvent.id!!).orElseThrow()
-        val expectedUntil = targetStart.minusSeconds(1)
-            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
-        kotlin.test.assertTrue(persistedOld.rrule!!.contains("FREQ=DAILY"))
-        kotlin.test.assertTrue(persistedOld.rrule!!.contains("UNTIL=$expectedUntil"))
-        kotlin.test.assertFalse(persistedOld.rrule!!.contains("COUNT="))
-        assertEquals("원본", persistedOld.title)
+        val persistedEvent = eventRepository.findById(event.id!!).orElseThrow()
+        assertEquals("원본", persistedEvent.title)
 
-        val newEvents = eventRepository.findAll().filter { it.id != oldEvent.id }
-        assertEquals(1, newEvents.size)
-        val newEvent = newEvents.single()
-        assertEquals("새 제목", newEvent.title)
-        assertEquals(targetStart, newEvent.startAt)
-        assertEquals(instances[2].endAt, newEvent.endAt)
-        kotlin.test.assertTrue(newEvent.rrule!!.contains("FREQ=DAILY"))
-        kotlin.test.assertTrue(newEvent.rrule!!.contains("COUNT=3"))
+        val allEvents = eventRepository.findAll()
+        assertEquals(1, allEvents.size)
 
-        val reloadedOldSide = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
-            .filter { it.eventId == oldEvent.id }
+        val reloaded = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(30))
+            .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
-        assertEquals(2, reloadedOldSide.size)
-
-        val reloadedNewSide = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
-            .filter { it.eventId == newEvent.id }
-            .sortedBy { it.startAt }
-        assertEquals(3, reloadedNewSide.size)
-        kotlin.test.assertTrue(reloadedNewSide.all { it.title == null })
-        assertEquals(targetStart, reloadedNewSide[0].startAt)
+        assertEquals(5, reloaded.size)
+        assertEquals(null, reloaded[0].title)
+        assertEquals(null, reloaded[1].title)
+        assertEquals("새 제목", reloaded[2].title)
+        assertEquals("새 제목", reloaded[3].title)
+        assertEquals("새 제목", reloaded[4].title)
     }
 
     @Test
@@ -286,7 +264,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, instances.size)
@@ -305,7 +283,7 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals("새 제목", persistedEvent.title)
 
         val reloaded = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, reloaded.size)

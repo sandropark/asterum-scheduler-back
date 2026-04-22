@@ -41,7 +41,7 @@ class RecurrenceMaterializerIT @Autowired constructor(
         em.flush(); em.clear()
 
         val baseline = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusYears(policy.expansionYears + 10L))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusYears(policy.expansionYears + 10L))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         val baselineLastYear = baseline.last().startAt.year
@@ -51,7 +51,7 @@ class RecurrenceMaterializerIT @Autowired constructor(
         em.flush(); em.clear()
 
         val extended = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusYears(policy.expansionYears + 10L))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusYears(policy.expansionYears + 10L))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         val extendedLastYear = extended.last().startAt.year
@@ -71,7 +71,7 @@ class RecurrenceMaterializerIT @Autowired constructor(
         em.flush(); em.clear()
 
         val baselineCount = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .count { it.eventId == event.id }
         assertEquals(3, baselineCount)
 
@@ -79,7 +79,7 @@ class RecurrenceMaterializerIT @Autowired constructor(
         em.flush(); em.clear()
 
         val afterCount = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .count { it.eventId == event.id }
         assertEquals(3, afterCount)
     }

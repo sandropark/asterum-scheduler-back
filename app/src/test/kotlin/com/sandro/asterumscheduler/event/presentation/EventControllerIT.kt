@@ -299,7 +299,7 @@ class EventControllerIT @Autowired constructor(
         em.flush(); em.clear()
         val first = firstInstanceId(event.id!!)
 
-        val newStart = LocalDateTime.of(2027, 5, 1, 14, 0)
+        val newStart = LocalDateTime.of(2027, 4, 1, 14, 0)
         val newEnd = newStart.plusHours(2)
         val body = objectMapper.writeValueAsString(
             mapOf(
@@ -318,7 +318,7 @@ class EventControllerIT @Autowired constructor(
         val newIds = orderedInstanceIds(event.id!!)
         kotlin.test.assertEquals(2, newIds.size)
         mockMvc.perform(get("/api/events/instances/${newIds[0]}"))
-            .andExpect(jsonPath("$.data.startAt").value("2027-05-01T14:00:00"))
+            .andExpect(jsonPath("$.data.startAt").value("2027-04-01T14:00:00"))
             .andExpect(jsonPath("$.data.rrule").value("FREQ=WEEKLY;COUNT=2"))
     }
 

@@ -47,7 +47,7 @@ class EventRecurringCreateIT @Autowired constructor(
         assertEquals("FREQ=DAILY;COUNT=3", persisted.rrule)
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(10))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         assertEquals(3, instances.size)
@@ -72,7 +72,7 @@ class EventRecurringCreateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusMonths(2))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusMonths(2))
             .filter { it.eventId == event.id }
             .sortedBy { it.startAt }
         // 5/4, 5/11, 5/18, 5/25
@@ -89,7 +89,7 @@ class EventRecurringCreateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(1))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusDays(1))
             .filter { it.eventId == event.id }
         assertEquals(1, instances.size)
     }
@@ -105,7 +105,7 @@ class EventRecurringCreateIT @Autowired constructor(
         em.flush(); em.clear()
 
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusYears(3))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(start, start.plusYears(3))
             .filter { it.eventId == event.id }
         // policyLimit 은 now(테스트 실행 시점) + 1년 이므로 개수는 실행 시점에 따라 달라진다
         // — 여기서는 "무한이 아니라 상한에 의해 잘렸는가" 만 검증

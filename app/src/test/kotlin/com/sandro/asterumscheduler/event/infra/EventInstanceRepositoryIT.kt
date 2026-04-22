@@ -44,7 +44,7 @@ class EventInstanceRepositoryIT @Autowired constructor(
         em.flush(); em.clear()
 
         val ids = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(monthStart, monthEnd)
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(monthStart, monthEnd)
             .map { it.id }
             .toSet()
 
@@ -66,7 +66,7 @@ class EventInstanceRepositoryIT @Autowired constructor(
 
         assertTrue(eventInstanceRepository.findById(saved.id!!).isEmpty)
         val found = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(event.startAt, event.startAt.plusDays(1))
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(event.startAt, event.startAt.plusDays(1))
         assertTrue(found.none { it.id == saved.id })
     }
 
