@@ -395,6 +395,101 @@ class EventControllerIT @Autowired constructor(
             .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
     }
 
+    @Test
+    fun `POST api_events - startAt 이 endAt 이상이면 400 INVALID_INPUT`() {
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "title" to "x",
+                "startAt" to "2028-01-01T11:00:00",
+                "endAt" to "2028-01-01T10:00:00",
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `PATCH api_events_instances_id_all_time - startAt 이 endAt 이상이면 400 INVALID_INPUT`() {
+        val start = LocalDateTime.of(2028, 2, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(
+            EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=2")
+        )
+        em.flush(); em.clear()
+        val id = firstInstanceId(event.id!!)
+
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "startAt" to "2028-03-01T15:00:00",
+                "endAt" to "2028-03-01T14:00:00",
+                "rrule" to "FREQ=WEEKLY;COUNT=2",
+            )
+        )
+        mockMvc.perform(
+            patch("/api/events/instances/$id/all/time")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `POST api_events - title 이 255자를 초과하면 400 INVALID_INPUT`() {
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "title" to "a".repeat(256),
+                "startAt" to "2028-01-01T10:00:00",
+                "endAt" to "2028-01-01T11:00:00",
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `POST api_events - rrule 이 500자를 초과하면 400 INVALID_INPUT`() {
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "title" to "x",
+                "startAt" to "2028-01-01T10:00:00",
+                "endAt" to "2028-01-01T11:00:00",
+                "rrule" to "a".repeat(501),
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `GET api_events - from 이 to 이상이면 400 INVALID_INPUT`() {
+        mockMvc.perform(
+            get("/api/events")
+                .param("from", "2028-06-01T00:00:00")
+                .param("to", "2028-05-01T00:00:00")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
     private fun singleInstanceId(eventId: Long): Long =
         (em.createNativeQuery("SELECT id FROM events_instances WHERE event_id = :eid")
             .setParameter("eid", eventId)

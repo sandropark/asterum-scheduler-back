@@ -141,4 +141,5 @@ class EventQueryServiceTest {
         val ex = assertFailsWith<BusinessException> { service.findDetail(999L) }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
+
 }

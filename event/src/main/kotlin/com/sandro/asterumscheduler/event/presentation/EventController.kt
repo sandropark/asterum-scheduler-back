@@ -14,17 +14,15 @@ import com.sandro.asterumscheduler.event.application.EventThisAndFutureTitleUpda
 import com.sandro.asterumscheduler.event.application.EventThisOnlyUpdateRequest
 import com.sandro.asterumscheduler.event.application.MonthlyEventQuery
 import jakarta.validation.Valid
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.time.LocalDateTime
 
 @RestController
 @RequestMapping("/api/events")
@@ -34,10 +32,9 @@ class EventController(
 ) {
     @GetMapping
     fun monthly(
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) from: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) to: LocalDateTime,
+        @ModelAttribute @Valid query: MonthlyEventQuery,
     ): ApiResponse<List<EventInstanceSummary>> =
-        ApiResponse.ok(eventQueryService.findMonthly(MonthlyEventQuery(from, to)))
+        ApiResponse.ok(eventQueryService.findMonthly(query))
 
     @GetMapping("/instances/{id}")
     fun detail(@PathVariable id: Long): ApiResponse<EventInstanceDetail> =
