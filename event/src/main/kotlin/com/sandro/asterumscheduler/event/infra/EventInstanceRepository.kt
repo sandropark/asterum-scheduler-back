@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.time.LocalDateTime
 
 interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
-    fun findByDeletedAtIsNullAndStartAtGreaterThanEqualAndStartAtLessThan(
+    fun findByStartAtGreaterThanEqualAndStartAtLessThan(
         from: LocalDateTime,
         to: LocalDateTime,
     ): List<EventInstance>

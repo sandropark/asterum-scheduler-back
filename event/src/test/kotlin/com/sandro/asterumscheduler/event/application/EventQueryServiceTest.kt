@@ -1,5 +1,7 @@
 package com.sandro.asterumscheduler.event.application
 
+import com.sandro.asterumscheduler.common.exception.BusinessException
+import com.sandro.asterumscheduler.common.exception.ErrorCode
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.assignIdForTest
@@ -9,7 +11,10 @@ import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
+import java.util.*
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class EventQueryServiceTest {
 
@@ -41,7 +46,7 @@ class EventQueryServiceTest {
         ).also { it.assignIdForTest(2L) }
 
         every {
-            eventInstanceRepository.findByDeletedAtIsNullAndStartAtGreaterThanEqualAndStartAtLessThan(from, to)
+            eventInstanceRepository.findByStartAtGreaterThanEqualAndStartAtLessThan(from, to)
         } returns listOf(instance1, instance2)
         every {
             eventRepository.findAllById(match<Iterable<Long>> { it.toSet() == setOf(10L, 20L) })
@@ -63,5 +68,77 @@ class EventQueryServiceTest {
             ),
             result[1],
         )
+    }
+
+    @Test
+    fun `상세 조회 시 instance_title 이 있으면 그 값, 없으면 events_title 을 반환한다`() {
+        val startAt = LocalDateTime.of(2026, 5, 10, 9, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "원본 제목", startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(100L) }
+        val overridden = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt, title = "오버라이드 제목")
+            .also { it.assignIdForTest(1L) }
+        val nonOverridden = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt, title = null)
+            .also { it.assignIdForTest(2L) }
+
+        every { eventInstanceRepository.findById(1L) } returns Optional.of(overridden)
+        every { eventInstanceRepository.findById(2L) } returns Optional.of(nonOverridden)
+        every { eventRepository.findById(100L) } returns Optional.of(event)
+
+        assertEquals("오버라이드 제목", service.findDetail(1L).title)
+        assertEquals("원본 제목", service.findDetail(2L).title)
+    }
+
+    @Test
+    fun `상세 조회 응답에 events_rrule 이 포함된다 (반복 일정)`() {
+        val startAt = LocalDateTime.of(2026, 5, 10, 9, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(
+            title = "주간 회의",
+            startAt = startAt,
+            endAt = endAt,
+            rrule = "FREQ=WEEKLY;BYDAY=MO",
+        ).also { it.assignIdForTest(200L) }
+        val instance = EventInstance(eventId = 200L, startAt = startAt, endAt = endAt, title = null)
+            .also { it.assignIdForTest(10L) }
+
+        every { eventInstanceRepository.findById(10L) } returns Optional.of(instance)
+        every { eventRepository.findById(200L) } returns Optional.of(event)
+
+        val result = service.findDetail(10L)
+
+        assertEquals(
+            EventInstanceDetail(
+                id = 10L,
+                title = "주간 회의",
+                startAt = startAt,
+                endAt = endAt,
+                rrule = "FREQ=WEEKLY;BYDAY=MO",
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun `상세 조회 응답의 rrule 은 단일 일정이면 null 이다`() {
+        val startAt = LocalDateTime.of(2026, 5, 10, 9, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "일회성", startAt = startAt, endAt = endAt, rrule = null)
+            .also { it.assignIdForTest(300L) }
+        val instance = EventInstance(eventId = 300L, startAt = startAt, endAt = endAt, title = null)
+            .also { it.assignIdForTest(20L) }
+
+        every { eventInstanceRepository.findById(20L) } returns Optional.of(instance)
+        every { eventRepository.findById(300L) } returns Optional.of(event)
+
+        assertNull(service.findDetail(20L).rrule)
+    }
+
+    @Test
+    fun `instance 가 없거나 삭제된 경우 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.findDetail(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 }

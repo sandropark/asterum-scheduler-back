@@ -1,16 +1,13 @@
 package com.sandro.asterumscheduler.event.domain
 
 import com.sandro.asterumscheduler.common.domain.BaseEntity
-import jakarta.persistence.Column
-import jakarta.persistence.Entity
-import jakarta.persistence.GeneratedValue
-import jakarta.persistence.GenerationType
-import jakarta.persistence.Id
-import jakarta.persistence.Table
+import jakarta.persistence.*
+import org.hibernate.annotations.SQLRestriction
 import java.time.LocalDateTime
 
 @Entity
 @Table(name = "events")
+@SQLRestriction("deleted_at IS NULL")
 open class Event(
     @Column(name = "title", nullable = false)
     var title: String,
