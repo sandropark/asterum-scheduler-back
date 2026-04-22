@@ -9,6 +9,7 @@ import com.sandro.asterumscheduler.event.application.EventService
 import com.sandro.asterumscheduler.event.application.MonthlyEventQuery
 import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -39,5 +40,29 @@ class EventController(
     fun create(@RequestBody @Valid request: EventCreateRequest): ApiResponse<EventCreateResponse> {
         val event = eventService.create(request)
         return ApiResponse.ok(EventCreateResponse(event.id!!))
+    }
+
+    @DeleteMapping("/instances/{id}")
+    fun deleteSingle(@PathVariable id: Long): ApiResponse<Unit> {
+        eventService.deleteSingle(id)
+        return ApiResponse.ok()
+    }
+
+    @DeleteMapping("/instances/{id}/this-only")
+    fun deleteThisOnly(@PathVariable id: Long): ApiResponse<Unit> {
+        eventService.deleteThisOnly(id)
+        return ApiResponse.ok()
+    }
+
+    @DeleteMapping("/instances/{id}/all")
+    fun deleteAll(@PathVariable id: Long): ApiResponse<Unit> {
+        eventService.deleteAll(id)
+        return ApiResponse.ok()
+    }
+
+    @DeleteMapping("/instances/{id}/this-and-future")
+    fun deleteThisAndFuture(@PathVariable id: Long): ApiResponse<Unit> {
+        eventService.deleteThisAndFuture(id)
+        return ApiResponse.ok()
     }
 }
