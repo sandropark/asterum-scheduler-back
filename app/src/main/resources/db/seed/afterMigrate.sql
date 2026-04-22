@@ -29,7 +29,8 @@ INSERT INTO events (title, start_at, end_at, rrule, created_at, updated_at) VALU
     ('주간 스탠드업',
      date_trunc('month', now()) + interval '9 hours',
      date_trunc('month', now()) + interval '9 hours 30 minutes',
-     'FREQ=WEEKLY;COUNT=5', now(), now());
+     'FREQ=WEEKLY;COUNT=5;BYDAY=' || (ARRAY['SU','MO','TU','WE','TH','FR','SA'])[EXTRACT(DOW FROM date_trunc('month', now()))::int + 1],
+     now(), now());
 
 INSERT INTO events_instances (event_id, start_at, end_at, has_override_participants, created_at, updated_at)
 SELECT id,
