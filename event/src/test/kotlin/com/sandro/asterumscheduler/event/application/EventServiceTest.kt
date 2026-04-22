@@ -5,6 +5,8 @@ import com.sandro.asterumscheduler.common.exception.ErrorCode
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.assignIdForTest
+import com.sandro.asterumscheduler.common.user.UserInfo
+import com.sandro.asterumscheduler.common.user.UserReader
 import com.sandro.asterumscheduler.event.domain.EventParticipant
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
 import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
@@ -24,6 +26,7 @@ class EventServiceTest {
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
     private val eventParticipantRepository = mockk<EventParticipantRepository>()
+    private val userReader = mockk<UserReader>()
     private val recurrenceExpander = mockk<RecurrenceExpander>()
     private val rruleShortener = mockk<RruleShortener>()
     private val rruleSuccessor = mockk<RruleSuccessor>()
@@ -31,6 +34,7 @@ class EventServiceTest {
         eventRepository,
         eventInstanceRepository,
         eventParticipantRepository,
+        userReader,
         recurrenceExpander,
         rruleShortener,
         rruleSuccessor,
@@ -821,10 +825,28 @@ class EventServiceTest {
         }
         every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
         every { eventParticipantRepository.save(any<EventParticipant>()) } answers { firstArg() }
+        every { userReader.findExistingIds(setOf(10L, 20L)) } returns setOf(10L, 20L)
 
         service.create(EventCreateRequest(title = "회의", startAt = startAt, endAt = endAt, userIds = setOf(10L, 20L)))
 
         verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 10L }) }
         verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 20L }) }
+    }
+
+    @Test
+    fun `존재하지 않는 userId 포함 생성 시 NOT_FOUND`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+
+        every { eventRepository.save(any<Event>()) } answers {
+            firstArg<Event>().also { it.assignIdForTest(1L) }
+        }
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+        every { userReader.findExistingIds(setOf(10L, 99L)) } returns setOf(10L)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.create(EventCreateRequest(title = "회의", startAt = startAt, endAt = endAt, userIds = setOf(10L, 99L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 }

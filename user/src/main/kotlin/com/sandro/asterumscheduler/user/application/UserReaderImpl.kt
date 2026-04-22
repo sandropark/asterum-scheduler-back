@@ -9,4 +9,7 @@ import org.springframework.stereotype.Component
 class UserReaderImpl(private val userRepository: UserRepository) : UserReader {
     override fun findByIds(ids: Set<Long>): List<UserInfo> =
         userRepository.findAllById(ids).map { UserInfo(id = it.id!!, name = it.name) }
+
+    override fun findExistingIds(ids: Set<Long>): Set<Long> =
+        userRepository.findAllById(ids).mapNotNull { it.id }.toSet()
 }

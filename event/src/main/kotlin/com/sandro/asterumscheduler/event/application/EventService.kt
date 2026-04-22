@@ -2,6 +2,7 @@ package com.sandro.asterumscheduler.event.application
 
 import com.sandro.asterumscheduler.common.exception.BusinessException
 import com.sandro.asterumscheduler.common.exception.ErrorCode
+import com.sandro.asterumscheduler.common.user.UserReader
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.EventParticipant
@@ -17,6 +18,7 @@ class EventService(
     private val eventRepository: EventRepository,
     private val eventInstanceRepository: EventInstanceRepository,
     private val eventParticipantRepository: EventParticipantRepository,
+    private val userReader: UserReader,
     private val recurrenceExpander: RecurrenceExpander,
     private val rruleShortener: RruleShortener,
     private val rruleSuccessor: RruleSuccessor,
@@ -41,8 +43,13 @@ class EventService(
                 EventInstance(eventId = event.id!!, startAt = occ.startAt, endAt = occ.endAt)
             )
         }
-        request.userIds.forEach { userId ->
-            eventParticipantRepository.save(EventParticipant(eventId = event.id!!, userId = userId))
+        if (request.userIds.isNotEmpty()) {
+            // 캐시 고민
+            val foundIds = userReader.findExistingIds(request.userIds)
+            if (foundIds != request.userIds) throw BusinessException(ErrorCode.NOT_FOUND)
+            request.userIds.forEach { userId ->
+                eventParticipantRepository.save(EventParticipant(eventId = event.id!!, userId = userId))
+            }
         }
         return event
     }
