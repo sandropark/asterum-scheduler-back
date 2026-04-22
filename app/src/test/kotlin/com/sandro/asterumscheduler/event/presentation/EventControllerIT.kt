@@ -56,8 +56,8 @@ class EventControllerIT @Autowired constructor(
 
         mockMvc.perform(
             get("/api/events")
-                .param("from", "2026-05-01T00:00:00")
-                .param("to", "2026-06-01T00:00:00")
+                .param("year", "2026")
+                .param("month", "5")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
