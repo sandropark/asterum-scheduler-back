@@ -77,6 +77,7 @@ class EventControllerIT @Autowired constructor(
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.title").value("상세"))
             .andExpect(jsonPath("$.data.rrule").value("FREQ=DAILY;COUNT=2"))
+            .andExpect(jsonPath("$.data.participants").isArray)
     }
 
     @Test

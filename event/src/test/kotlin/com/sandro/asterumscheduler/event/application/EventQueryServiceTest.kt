@@ -2,11 +2,17 @@ package com.sandro.asterumscheduler.event.application
 
 import com.sandro.asterumscheduler.common.exception.BusinessException
 import com.sandro.asterumscheduler.common.exception.ErrorCode
+import com.sandro.asterumscheduler.common.user.UserInfo
+import com.sandro.asterumscheduler.common.user.UserReader
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
+import com.sandro.asterumscheduler.event.domain.EventParticipant
+import com.sandro.asterumscheduler.event.domain.InstanceParticipant
 import com.sandro.asterumscheduler.event.domain.assignIdForTest
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
+import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
+import com.sandro.asterumscheduler.event.infra.InstanceParticipantRepository
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
@@ -20,7 +26,12 @@ class EventQueryServiceTest {
 
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
-    private val service = EventQueryService(eventRepository, eventInstanceRepository)
+    private val eventParticipantRepository = mockk<EventParticipantRepository>()
+    private val instanceParticipantRepository = mockk<InstanceParticipantRepository>()
+    private val userReader = mockk<UserReader>()
+    private val service = EventQueryService(
+        eventRepository, eventInstanceRepository, eventParticipantRepository, instanceParticipantRepository, userReader,
+    )
 
     @Test
     fun `월간 조회 시 instance_title 이 있으면 그 값을, 없으면 events_title 을 반환한다`() {
@@ -84,6 +95,7 @@ class EventQueryServiceTest {
         every { eventInstanceRepository.findById(1L) } returns Optional.of(overridden)
         every { eventInstanceRepository.findById(2L) } returns Optional.of(nonOverridden)
         every { eventRepository.findById(100L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(100L) } returns emptyList()
 
         assertEquals("오버라이드 제목", service.findDetail(1L).title)
         assertEquals("원본 제목", service.findDetail(2L).title)
@@ -104,6 +116,7 @@ class EventQueryServiceTest {
 
         every { eventInstanceRepository.findById(10L) } returns Optional.of(instance)
         every { eventRepository.findById(200L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(200L) } returns emptyList()
 
         val result = service.findDetail(10L)
 
@@ -114,6 +127,7 @@ class EventQueryServiceTest {
                 startAt = startAt,
                 endAt = endAt,
                 rrule = "FREQ=WEEKLY;BYDAY=MO",
+                participants = emptyList(),
             ),
             result,
         )
@@ -130,6 +144,7 @@ class EventQueryServiceTest {
 
         every { eventInstanceRepository.findById(20L) } returns Optional.of(instance)
         every { eventRepository.findById(300L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(300L) } returns emptyList()
 
         assertNull(service.findDetail(20L).rrule)
     }
@@ -140,6 +155,68 @@ class EventQueryServiceTest {
 
         val ex = assertFailsWith<BusinessException> { service.findDetail(999L) }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `상세 조회 — hasOverrideParticipants=false 면 event_participants 에서 userIds 반환`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 9, 0)
+        val event = Event(title = "회의", startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(10L) }
+        val instance = EventInstance(eventId = 10L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(1L) }
+
+        every { eventInstanceRepository.findById(1L) } returns Optional.of(instance)
+        every { eventRepository.findById(10L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(10L) } returns listOf(
+            EventParticipant(eventId = 10L, userId = 100L),
+            EventParticipant(eventId = 10L, userId = 200L),
+        )
+        every { userReader.findByIds(setOf(100L, 200L)) } returns listOf(UserInfo(100L, "Alice"), UserInfo(200L, "Bob"))
+
+        val result = service.findDetail(1L)
+
+        assertEquals(listOf(ParticipantSummary(100L, "Alice"), ParticipantSummary(200L, "Bob")), result.participants)
+    }
+
+    @Test
+    fun `상세 조회 — hasOverrideParticipants=true 면 instance_participants 에서 userIds 반환`() {
+        val startAt = LocalDateTime.of(2026, 5, 2, 9, 0)
+        val event = Event(title = "회의", startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(20L) }
+        val instance = EventInstance(
+            eventId = 20L,
+            startAt = startAt,
+            endAt = startAt.plusHours(1),
+            hasOverrideParticipants = true,
+        ).also { it.assignIdForTest(2L) }
+
+        every { eventInstanceRepository.findById(2L) } returns Optional.of(instance)
+        every { eventRepository.findById(20L) } returns Optional.of(event)
+        every { instanceParticipantRepository.findAllByInstanceId(2L) } returns listOf(
+            InstanceParticipant(instanceId = 2L, userId = 300L),
+        )
+        every { userReader.findByIds(setOf(300L)) } returns listOf(UserInfo(300L, "Carol"))
+
+        val result = service.findDetail(2L)
+
+        assertEquals(listOf(ParticipantSummary(300L, "Carol")), result.participants)
+    }
+
+    @Test
+    fun `상세 조회 — 참여자 없으면 빈 리스트 반환`() {
+        val startAt = LocalDateTime.of(2026, 5, 3, 9, 0)
+        val event = Event(title = "회의", startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(30L) }
+        val instance = EventInstance(eventId = 30L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(3L) }
+
+        every { eventInstanceRepository.findById(3L) } returns Optional.of(instance)
+        every { eventRepository.findById(30L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(30L) } returns emptyList()
+
+        val result = service.findDetail(3L)
+
+        assertEquals(emptyList(), result.participants)
     }
 
 }

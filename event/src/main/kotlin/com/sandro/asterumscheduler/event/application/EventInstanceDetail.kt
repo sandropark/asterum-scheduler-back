@@ -8,4 +8,5 @@ data class EventInstanceDetail(
     val startAt: LocalDateTime,
     val endAt: LocalDateTime,
     val rrule: String?,
+    val participants: List<ParticipantSummary>,
 )
