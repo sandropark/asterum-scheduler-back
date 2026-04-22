@@ -134,6 +134,68 @@ class EventRecurringUpdateIT @Autowired constructor(
     }
 
     @Test
+    fun `updateTitleThisAndFuture - old event rrule 단축 + 신규 event 생성 + target 이후 instance 가 신규 event 로 이동하고 title null 리셋`() {
+        val start = LocalDateTime.of(2026, 11, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val oldEvent = service.create(
+            EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=5")
+        )
+        em.flush(); em.clear()
+
+        val instances = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == oldEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(5, instances.size)
+
+        service.updateThisOnly(
+            instances[2].id!!,
+            EventThisOnlyUpdateRequest("오버라이드", instances[2].startAt, instances[2].endAt),
+        )
+        em.flush(); em.clear()
+
+        val targetId = instances[2].id!!
+        val targetStart = instances[2].startAt
+        service.updateTitleThisAndFuture(
+            targetId,
+            EventThisAndFutureTitleUpdateRequest("새 제목"),
+        )
+        em.flush(); em.clear()
+
+        val persistedOld = eventRepository.findById(oldEvent.id!!).orElseThrow()
+        val expectedUntil = targetStart.minusSeconds(1)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
+        kotlin.test.assertTrue(persistedOld.rrule!!.contains("FREQ=DAILY"))
+        kotlin.test.assertTrue(persistedOld.rrule!!.contains("UNTIL=$expectedUntil"))
+        kotlin.test.assertFalse(persistedOld.rrule!!.contains("COUNT="))
+        assertEquals("원본", persistedOld.title)
+
+        val newEvents = eventRepository.findAll().filter { it.id != oldEvent.id }
+        assertEquals(1, newEvents.size)
+        val newEvent = newEvents.single()
+        assertEquals("새 제목", newEvent.title)
+        assertEquals(targetStart, newEvent.startAt)
+        assertEquals(instances[2].endAt, newEvent.endAt)
+        kotlin.test.assertTrue(newEvent.rrule!!.contains("FREQ=DAILY"))
+        kotlin.test.assertTrue(newEvent.rrule!!.contains("COUNT=3"))
+
+        val reloadedOldSide = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
+            .filter { it.eventId == oldEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(2, reloadedOldSide.size)
+
+        val reloadedNewSide = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
+            .filter { it.eventId == newEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(3, reloadedNewSide.size)
+        kotlin.test.assertTrue(reloadedNewSide.all { it.title == null })
+        assertEquals(targetStart, reloadedNewSide[0].startAt)
+    }
+
+    @Test
     fun `updateAllTitle - event 제목이 변경되고 단일 수정한 instance 의 title 까지 null 로 리셋된다`() {
         val start = LocalDateTime.of(2026, 8, 1, 10, 0)
         val end = start.plusHours(1)

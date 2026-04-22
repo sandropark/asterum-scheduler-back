@@ -23,7 +23,14 @@ class EventServiceTest {
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
     private val recurrenceExpander = mockk<RecurrenceExpander>()
     private val rruleShortener = mockk<RruleShortener>()
-    private val service = EventService(eventRepository, eventInstanceRepository, recurrenceExpander, rruleShortener)
+    private val rruleSuccessor = mockk<RruleSuccessor>()
+    private val service = EventService(
+        eventRepository,
+        eventInstanceRepository,
+        recurrenceExpander,
+        rruleShortener,
+        rruleSuccessor,
+    )
 
     @Test
     fun `일정을 생성하면 events 와 events_instances 가 동시에 저장된다`() {
@@ -499,6 +506,121 @@ class EventServiceTest {
         every { eventRepository.findById(500L) } returns Optional.empty()
 
         val ex = assertFailsWith<BusinessException> { service.deleteThisAndFuture(51L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `updateTitleThisAndFuture - old rrule 단축 + 신규 event 생성 + target 이후 instance 의 eventId 와 title 리셋`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val originalRrule = "FREQ=DAILY;COUNT=5"
+        val oldEvent = Event(title = "원본", startAt = startAt, endAt = endAt, rrule = originalRrule)
+            .also { it.assignIdForTest(1200L) }
+        val i1 = EventInstance(eventId = 1200L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(121L) }
+        val i2 = EventInstance(eventId = 1200L, startAt = startAt.plusDays(1), endAt = endAt.plusDays(1))
+            .also { it.assignIdForTest(122L) }
+        val i3 = EventInstance(eventId = 1200L, startAt = startAt.plusDays(2), endAt = endAt.plusDays(2))
+            .also { it.assignIdForTest(123L) }
+        val i4 = EventInstance(
+            eventId = 1200L,
+            startAt = startAt.plusDays(3),
+            endAt = endAt.plusDays(3),
+            title = "오버라이드",
+        ).also { it.assignIdForTest(124L) }
+        val i5 = EventInstance(eventId = 1200L, startAt = startAt.plusDays(4), endAt = endAt.plusDays(4))
+            .also { it.assignIdForTest(125L) }
+
+        val shortenedRrule = "FREQ=DAILY;UNTIL=20260502T095959"
+        val successorRrule = "FREQ=DAILY;COUNT=3"
+
+        every { eventInstanceRepository.findById(123L) } returns Optional.of(i3)
+        every { eventRepository.findById(1200L) } returns Optional.of(oldEvent)
+        every { rruleSuccessor.succeed(originalRrule, oldEvent.startAt, i3.startAt) } returns successorRrule
+        every { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) } returns shortenedRrule
+        every { eventRepository.save(any<Event>()) } answers {
+            val e = firstArg<Event>()
+            e.assignIdForTest(1300L)
+            e
+        }
+        every {
+            eventInstanceRepository.findAllByEventIdAndStartAtGreaterThanEqual(1200L, i3.startAt)
+        } returns listOf(i3, i4, i5)
+
+        service.updateTitleThisAndFuture(
+            123L,
+            EventThisAndFutureTitleUpdateRequest("새 제목"),
+        )
+
+        assertEquals(shortenedRrule, oldEvent.rrule)
+        assertEquals("원본", oldEvent.title)
+
+        verify(exactly = 1) { rruleSuccessor.succeed(originalRrule, oldEvent.startAt, i3.startAt) }
+        verify(exactly = 1) { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) }
+        verify {
+            eventRepository.save(
+                match<Event> {
+                    it.title == "새 제목" &&
+                        it.startAt == i3.startAt &&
+                        it.endAt == i3.endAt &&
+                        it.rrule == successorRrule
+                }
+            )
+        }
+
+        assertEquals(1200L, i1.eventId)
+        assertEquals(1200L, i2.eventId)
+        assertEquals(null, i1.title)
+        assertEquals(null, i2.title)
+
+        assertEquals(1300L, i3.eventId)
+        assertEquals(1300L, i4.eventId)
+        assertEquals(1300L, i5.eventId)
+        assertEquals(null, i3.title)
+        assertEquals(null, i4.title)
+        assertEquals(null, i5.title)
+    }
+
+    @Test
+    fun `updateTitleThisAndFuture - event_rrule 이 null 이면 INVALID_INPUT`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "단일", startAt = startAt, endAt = endAt, rrule = null)
+            .also { it.assignIdForTest(1400L) }
+        val instance = EventInstance(eventId = 1400L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(141L) }
+        every { eventInstanceRepository.findById(141L) } returns Optional.of(instance)
+        every { eventRepository.findById(1400L) } returns Optional.of(event)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTitleThisAndFuture(141L, EventThisAndFutureTitleUpdateRequest("x"))
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verify(exactly = 0) { rruleSuccessor.succeed(any(), any(), any()) }
+        verify(exactly = 0) { rruleShortener.shorten(any(), any()) }
+    }
+
+    @Test
+    fun `updateTitleThisAndFuture - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTitleThisAndFuture(999L, EventThisAndFutureTitleUpdateRequest("x"))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `updateTitleThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val instance = EventInstance(eventId = 1500L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(151L) }
+        every { eventInstanceRepository.findById(151L) } returns Optional.of(instance)
+        every { eventRepository.findById(1500L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTitleThisAndFuture(151L, EventThisAndFutureTitleUpdateRequest("x"))
+        }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 

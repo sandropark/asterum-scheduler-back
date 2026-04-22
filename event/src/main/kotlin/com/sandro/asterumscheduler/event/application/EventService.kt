@@ -16,6 +16,7 @@ class EventService(
     private val eventInstanceRepository: EventInstanceRepository,
     private val recurrenceExpander: RecurrenceExpander,
     private val rruleShortener: RruleShortener,
+    private val rruleSuccessor: RruleSuccessor,
 ) {
     @Transactional
     fun create(request: EventCreateRequest): Event {
@@ -91,6 +92,34 @@ class EventService(
 
         event.title = request.title
         eventInstanceRepository.findAllByEventId(event.id!!).forEach { it.title = null }
+    }
+
+    @Transactional
+    fun updateTitleThisAndFuture(instanceId: Long, request: EventThisAndFutureTitleUpdateRequest) {
+        val target = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val oldEvent = eventRepository.findById(target.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val originalRrule = oldEvent.rrule ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        val newRrule = rruleSuccessor.succeed(originalRrule, oldEvent.startAt, target.startAt)
+        oldEvent.rrule = rruleShortener.shorten(originalRrule, target.startAt.minusSeconds(1))
+
+        val newEvent = eventRepository.save(
+            Event(
+                title = request.title,
+                startAt = target.startAt,
+                endAt = target.endAt,
+                rrule = newRrule,
+            )
+        )
+
+        eventInstanceRepository
+            .findAllByEventIdAndStartAtGreaterThanEqual(oldEvent.id!!, target.startAt)
+            .forEach {
+                it.eventId = newEvent.id!!
+                it.title = null
+            }
     }
 
     @Transactional
