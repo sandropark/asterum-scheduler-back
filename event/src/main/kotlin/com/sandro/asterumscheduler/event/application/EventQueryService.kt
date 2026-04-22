@@ -31,8 +31,18 @@ class EventQueryService(
         } else {
             eventParticipantRepository.findAllByEventId(event.id!!).map { it.userId }
         }
-        val participants = if (userIds.isEmpty()) emptyList() else
-            userReader.findByIds(userIds.toSet()).map { ParticipantSummary(id = it.id, name = it.name) }
+        val userInfos = if (userIds.isEmpty()) emptyList() else userReader.findByIds(userIds.toSet())
+        val teamIds = userInfos.filter { it.isTeam }.map { it.id }.toSet()
+        val membersByTeamId = if (teamIds.isEmpty()) emptyMap() else userReader.findMembersByTeamIds(teamIds)
+        val participants = userInfos.map { info ->
+            if (info.isTeam) {
+                val members = membersByTeamId[info.id].orEmpty()
+                    .map { ParticipantSummary(id = it.id, name = it.name) }
+                ParticipantSummary(id = info.id, name = info.name, isTeam = true, members = members)
+            } else {
+                ParticipantSummary(id = info.id, name = info.name)
+            }
+        }
         return EventInstanceDetail(
             id = instance.id!!,
             title = instance.title ?: event.title,

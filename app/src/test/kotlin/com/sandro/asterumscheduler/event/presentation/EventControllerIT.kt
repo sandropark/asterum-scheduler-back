@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.sandro.asterumscheduler.event.application.EventCreateRequest
 import com.sandro.asterumscheduler.event.application.EventService
 import com.sandro.asterumscheduler.user.domain.User
+import com.sandro.asterumscheduler.user.domain.UserMembership
+import com.sandro.asterumscheduler.user.infra.UserMembershipRepository
 import com.sandro.asterumscheduler.user.infra.UserRepository
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
@@ -35,6 +37,7 @@ class EventControllerIT @Autowired constructor(
     private val objectMapper: ObjectMapper,
     private val eventService: EventService,
     private val userRepository: UserRepository,
+    private val userMembershipRepository: UserMembershipRepository,
     private val em: EntityManager,
 ) {
     companion object {
@@ -717,6 +720,56 @@ class EventControllerIT @Autowired constructor(
             .andExpect(jsonPath("$.data.participants.length()").value(2))
             .andExpect(jsonPath("$.data.participants[?(@.name == 'Alice')]").exists())
             .andExpect(jsonPath("$.data.participants[?(@.name == 'Bob')]").exists())
+    }
+
+    @Test
+    fun `GET api_events_instances_id — 팀이 참여자이면 팀 항목과 members 배열로 반환된다`() {
+        val team = userRepository.save(User(email = "team@b.com", name = "팀B", isTeam = true))
+        val member = userRepository.save(User(email = "m@b.com", name = "멤버X"))
+        userMembershipRepository.save(UserMembership(teamId = team.id!!, memberId = member.id!!))
+
+        val start = LocalDateTime.of(2027, 1, 1, 10, 0)
+        val event = eventService.create(
+            EventCreateRequest(title = "팀 일정", startAt = start, endAt = start.plusHours(1), userIds = setOf(team.id!!))
+        )
+        em.flush(); em.clear()
+        val instanceId = firstInstanceId(event.id!!)
+
+        mockMvc.perform(get("/api/events/instances/$instanceId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(1))
+            .andExpect(jsonPath("$.data.participants[0].id").value(team.id!!))
+            .andExpect(jsonPath("$.data.participants[0].isTeam").value(true))
+            .andExpect(jsonPath("$.data.participants[0].members.length()").value(1))
+            .andExpect(jsonPath("$.data.participants[0].members[0].name").value("멤버X"))
+    }
+
+    @Test
+    fun `GET api_events_instances_id — 팀과 개인이 혼재하면 각각 올바른 계층 구조로 반환된다`() {
+        val team = userRepository.save(User(email = "team@c.com", name = "팀C", isTeam = true))
+        val member = userRepository.save(User(email = "m@c.com", name = "멤버Y"))
+        val individual = userRepository.save(User(email = "ind@c.com", name = "개인Z"))
+        userMembershipRepository.save(UserMembership(teamId = team.id!!, memberId = member.id!!))
+
+        val start = LocalDateTime.of(2027, 2, 1, 10, 0)
+        val event = eventService.create(
+            EventCreateRequest(
+                title = "혼합 일정",
+                startAt = start,
+                endAt = start.plusHours(1),
+                userIds = setOf(team.id!!, individual.id!!),
+            )
+        )
+        em.flush(); em.clear()
+        val instanceId = firstInstanceId(event.id!!)
+
+        mockMvc.perform(get("/api/events/instances/$instanceId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+            .andExpect(jsonPath("$.data.participants[?(@.id == ${team.id!!})].isTeam").value(true))
+            .andExpect(jsonPath("$.data.participants[?(@.id == ${team.id!!})].members[0].name").value("멤버Y"))
+            .andExpect(jsonPath("$.data.participants[?(@.id == ${individual.id!!})].isTeam").value(false))
+            .andExpect(jsonPath("$.data.participants[?(@.id == ${individual.id!!})].members").isEmpty)
     }
 
     private fun singleInstanceId(eventId: Long): Long =

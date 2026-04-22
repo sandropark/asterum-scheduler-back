@@ -219,4 +219,67 @@ class EventQueryServiceTest {
         assertEquals(emptyList(), result.participants)
     }
 
+    @Test
+    fun `상세 조회 — 팀 참여자가 있으면 계층 구조로 반환된다`() {
+        val startAt = LocalDateTime.of(2026, 6, 1, 9, 0)
+        val event = Event(title = "팀 회의", startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(40L) }
+        val instance = EventInstance(eventId = 40L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(4L) }
+
+        every { eventInstanceRepository.findById(4L) } returns Optional.of(instance)
+        every { eventRepository.findById(40L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(40L) } returns listOf(
+            EventParticipant(eventId = 40L, userId = 10L),
+        )
+        every { userReader.findByIds(setOf(10L)) } returns listOf(UserInfo(10L, "팀A", isTeam = true))
+        every { userReader.findMembersByTeamIds(setOf(10L)) } returns mapOf(
+            10L to listOf(UserInfo(1L, "멤버1"), UserInfo(2L, "멤버2")),
+        )
+
+        val result = service.findDetail(4L)
+
+        assertEquals(1, result.participants.size)
+        val team = result.participants[0]
+        assertEquals(ParticipantSummary(id = 10L, name = "팀A", isTeam = true, members = listOf(
+            ParticipantSummary(id = 1L, name = "멤버1"),
+            ParticipantSummary(id = 2L, name = "멤버2"),
+        )), team)
+    }
+
+    @Test
+    fun `상세 조회 — 팀과 개인이 혼재하면 각각 올바른 계층 구조로 반환된다`() {
+        val startAt = LocalDateTime.of(2026, 6, 2, 9, 0)
+        val event = Event(title = "혼합 회의", startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(50L) }
+        val instance = EventInstance(eventId = 50L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(5L) }
+
+        every { eventInstanceRepository.findById(5L) } returns Optional.of(instance)
+        every { eventRepository.findById(50L) } returns Optional.of(event)
+        every { eventParticipantRepository.findAllByEventId(50L) } returns listOf(
+            EventParticipant(eventId = 50L, userId = 10L),
+            EventParticipant(eventId = 50L, userId = 200L),
+        )
+        every { userReader.findByIds(setOf(10L, 200L)) } returns listOf(
+            UserInfo(10L, "팀A", isTeam = true),
+            UserInfo(200L, "개인B"),
+        )
+        every { userReader.findMembersByTeamIds(setOf(10L)) } returns mapOf(
+            10L to listOf(UserInfo(1L, "멤버1")),
+        )
+
+        val result = service.findDetail(5L)
+
+        assertEquals(2, result.participants.size)
+        val team = result.participants.first { it.id == 10L }
+        assertEquals(true, team.isTeam)
+        assertEquals(1, team.members.size)
+        assertEquals("멤버1", team.members[0].name)
+
+        val individual = result.participants.first { it.id == 200L }
+        assertEquals(false, individual.isTeam)
+        assertEquals(emptyList(), individual.members)
+    }
+
 }
