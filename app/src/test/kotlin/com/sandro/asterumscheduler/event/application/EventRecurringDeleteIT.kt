@@ -13,8 +13,10 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @SpringBootTest
 @Testcontainers
@@ -30,6 +32,44 @@ class EventRecurringDeleteIT @Autowired constructor(
         @ServiceConnection
         @JvmStatic
         val postgres: PostgreSQLContainer<*> = PostgreSQLContainer("postgres:16")
+    }
+
+    @Test
+    fun `deleteAll - event 와 해당 eventId 의 모든 instance 가 soft-delete 된다`() {
+        val start = LocalDateTime.of(2026, 6, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val event = service.create(
+            EventCreateRequest(title = "일일", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+
+        service.deleteAll(
+            eventInstanceRepository
+                .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+                .first { it.eventId == event.id }.id!!
+        )
+        em.flush(); em.clear()
+
+        val remaining = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+        assertEquals(0, remaining.size)
+        assertFalse(eventRepository.findById(event.id!!).isPresent)
+
+        val eventDeletedAt = em
+            .createNativeQuery("SELECT deleted_at FROM events WHERE id = :id")
+            .setParameter("id", event.id)
+            .singleResult
+        assertNotNull(eventDeletedAt)
+
+        @Suppress("UNCHECKED_CAST")
+        val instanceDeletedAts = em
+            .createNativeQuery("SELECT deleted_at FROM events_instances WHERE event_id = :eid")
+            .setParameter("eid", event.id)
+            .resultList as List<Any?>
+        assertEquals(3, instanceDeletedAts.size)
+        assertTrue(instanceDeletedAts.all { it != null })
     }
 
     @Test

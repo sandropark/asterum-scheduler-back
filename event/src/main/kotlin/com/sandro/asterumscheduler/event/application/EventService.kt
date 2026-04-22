@@ -71,4 +71,16 @@ class EventService(
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
         instance.deletedAt = LocalDateTime.now()
     }
+
+    @Transactional
+    fun deleteAll(instanceId: Long) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        val now = LocalDateTime.now()
+        event.deletedAt = now
+        eventInstanceRepository.findAllByEventId(event.id!!).forEach { it.deletedAt = now }
+    }
 }

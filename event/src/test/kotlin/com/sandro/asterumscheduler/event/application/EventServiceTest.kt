@@ -194,6 +194,41 @@ class EventServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 
+    @Test
+    fun `deleteAll - event 와 모든 instance 의 deletedAt 이 동일 시점으로 세팅된다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "반복", startAt = startAt, endAt = endAt, rrule = "FREQ=DAILY;COUNT=3")
+            .also { it.assignIdForTest(200L) }
+        val i1 = EventInstance(eventId = 200L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(21L) }
+        val i2 = EventInstance(eventId = 200L, startAt = startAt.plusDays(1), endAt = endAt.plusDays(1))
+            .also { it.assignIdForTest(22L) }
+        val i3 = EventInstance(eventId = 200L, startAt = startAt.plusDays(2), endAt = endAt.plusDays(2))
+            .also { it.assignIdForTest(23L) }
+        every { eventInstanceRepository.findById(22L) } returns Optional.of(i2)
+        every { eventRepository.findById(200L) } returns Optional.of(event)
+        every { eventInstanceRepository.findAllByEventId(200L) } returns listOf(i1, i2, i3)
+
+        service.deleteAll(22L)
+
+        assertNotNull(event.deletedAt)
+        assertNotNull(i1.deletedAt)
+        assertNotNull(i2.deletedAt)
+        assertNotNull(i3.deletedAt)
+        assertEquals(event.deletedAt, i1.deletedAt)
+        assertEquals(event.deletedAt, i2.deletedAt)
+        assertEquals(event.deletedAt, i3.deletedAt)
+    }
+
+    @Test
+    fun `deleteAll - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.deleteAll(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
     private fun prepareSingle(): Pair<Event, EventInstance> {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val endAt = startAt.plusHours(1)

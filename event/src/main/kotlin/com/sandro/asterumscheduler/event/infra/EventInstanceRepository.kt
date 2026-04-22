@@ -9,4 +9,6 @@ interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
         from: LocalDateTime,
         to: LocalDateTime,
     ): List<EventInstance>
+
+    fun findAllByEventId(eventId: Long): List<EventInstance>
 }
