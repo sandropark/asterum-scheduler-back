@@ -13,6 +13,7 @@ import com.sandro.asterumscheduler.event.infra.EventRepository
 import com.sandro.asterumscheduler.event.infra.InstanceParticipantRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.LocalDateTime
 
 @Service
@@ -164,17 +165,21 @@ class EventService(
         val event = eventRepository.findById(instance.eventId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
 
-        event.startAt = request.startAt
-        event.endAt = request.endAt
+        val duration = Duration.between(request.startAt, request.endAt)
+        val newStartAt = event.startAt.toLocalDate().atTime(request.startAt.toLocalTime())
+        val newEndAt = newStartAt + duration
+
+        event.startAt = newStartAt
+        event.endAt = newEndAt
         event.rrule = request.rrule
 
         val active = eventInstanceRepository.findAllByEventId(event.id!!)
         eventInstanceRepository.deleteAll(active)
 
         val occurrences = if (request.rrule == null) {
-            listOf(RecurrenceExpander.Occurrence(request.startAt, request.endAt))
+            listOf(RecurrenceExpander.Occurrence(newStartAt, newEndAt))
         } else {
-            recurrenceExpander.expand(request.rrule, request.startAt, request.endAt)
+            recurrenceExpander.expand(request.rrule, newStartAt, newEndAt)
         }
         occurrences.forEach { occ ->
             eventInstanceRepository.save(
