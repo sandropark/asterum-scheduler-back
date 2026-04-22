@@ -495,6 +495,85 @@ class EventControllerIT @Autowired constructor(
     }
 
     @Test
+    fun `PATCH participants all — 참여자 교체 후 상세 조회에 반영 (단일 일정)`() {
+        val user1 = userRepository.save(User(email = "all1@test.com", name = "AllUser1"))
+        val user2 = userRepository.save(User(email = "all2@test.com", name = "AllUser2"))
+        em.flush(); em.clear()
+
+        val start = LocalDateTime.of(2030, 1, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(EventCreateRequest(title = "단일", startAt = start, endAt = end))
+        em.flush(); em.clear()
+        val instanceId = singleInstanceId(event.id!!)
+
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to listOf(user1.id, user2.id)))
+        mockMvc.perform(
+            patch("/api/events/instances/$instanceId/participants/all")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        ).andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        mockMvc.perform(get("/api/events/instances/$instanceId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'AllUser1')]").exists())
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'AllUser2')]").exists())
+    }
+
+    @Test
+    fun `PATCH participants all — 반복 일정 instance_participants 오버라이드 리셋 후 event_participants 반영`() {
+        val user1 = userRepository.save(User(email = "allr1@test.com", name = "RecurAll1"))
+        val user2 = userRepository.save(User(email = "allr2@test.com", name = "RecurAll2"))
+        em.flush(); em.clear()
+
+        val start = LocalDateTime.of(2030, 2, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(
+            EventCreateRequest(title = "반복", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+        val ids = orderedInstanceIds(event.id!!)
+
+        // 먼저 첫 번째 인스턴스에 this-only 오버라이드
+        val overrideBody = objectMapper.writeValueAsString(mapOf("userIds" to listOf(user1.id)))
+        mockMvc.perform(
+            patch("/api/events/instances/${ids[0]}/participants/this-only")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(overrideBody)
+        ).andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        // all로 교체 — 오버라이드 리셋되고 새 참여자 반영
+        val allBody = objectMapper.writeValueAsString(mapOf("userIds" to listOf(user1.id, user2.id)))
+        mockMvc.perform(
+            patch("/api/events/instances/${ids[1]}/participants/all")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(allBody)
+        ).andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        // 모든 인스턴스에서 새 참여자 보여야 함
+        for (id in ids) {
+            mockMvc.perform(get("/api/events/instances/$id"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.participants.length()").value(2))
+        }
+    }
+
+    @Test
+    fun `PATCH participants all — 존재하지 않는 instance 는 404 NOT_FOUND`() {
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to emptyList<Long>()))
+        mockMvc.perform(
+            patch("/api/events/instances/999999/participants/all")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("NOT_FOUND"))
+    }
+
+    @Test
     fun `PATCH participants this-only — 반복 일정 instance 참여자 오버라이드 후 상세 조회에 반영`() {
         val user1 = userRepository.save(User(email = "p1@test.com", name = "Player1"))
         val user2 = userRepository.save(User(email = "p2@test.com", name = "Player2"))

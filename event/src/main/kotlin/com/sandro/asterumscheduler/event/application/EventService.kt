@@ -231,6 +231,28 @@ class EventService(
     }
 
     @Transactional
+    fun updateParticipantsAll(instanceId: Long, request: EventAllParticipantsUpdateRequest) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        if (request.userIds.isNotEmpty()) {
+            val foundIds = userReader.findExistingIds(request.userIds)
+            if (foundIds != request.userIds) throw BusinessException(ErrorCode.NOT_FOUND)
+        }
+
+        eventParticipantRepository.deleteAllByEventId(event.id!!)
+        request.userIds.forEach { userId ->
+            eventParticipantRepository.save(EventParticipant(eventId = event.id!!, userId = userId))
+        }
+
+        val allInstances = eventInstanceRepository.findAllByEventId(event.id!!)
+        instanceParticipantRepository.deleteAllByInstanceIdIn(allInstances.map { it.id!! })
+        allInstances.forEach { it.hasOverrideParticipants = false }
+    }
+
+    @Transactional
     fun updateParticipantsThisOnly(instanceId: Long, request: EventThisOnlyParticipantsUpdateRequest) {
         val instance = eventInstanceRepository.findById(instanceId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }

@@ -850,6 +850,55 @@ class EventServiceTest {
     }
 
     @Test
+    fun `ALL 참여자 수정 성공 — deleteAllByEventId + save N회 + 모든 instance hasOverrideParticipants=false + deleteAllByInstanceIdIn`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "반복", startAt = startAt, endAt = endAt, rrule = "FREQ=DAILY;COUNT=3")
+            .also { it.assignIdForTest(100L) }
+        val i1 = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(10L); it.hasOverrideParticipants = true }
+        val i2 = EventInstance(eventId = 100L, startAt = startAt.plusDays(1), endAt = endAt.plusDays(1))
+            .also { it.assignIdForTest(11L); it.hasOverrideParticipants = true }
+        every { eventInstanceRepository.findById(10L) } returns Optional.of(i1)
+        every { eventRepository.findById(100L) } returns Optional.of(event)
+        every { userReader.findExistingIds(setOf(10L, 20L)) } returns setOf(10L, 20L)
+        every { eventParticipantRepository.deleteAllByEventId(100L) } returns Unit
+        every { eventParticipantRepository.save(any<EventParticipant>()) } answers { firstArg() }
+        every { eventInstanceRepository.findAllByEventId(100L) } returns listOf(i1, i2)
+        every { instanceParticipantRepository.deleteAllByInstanceIdIn(listOf(10L, 11L)) } returns Unit
+
+        service.updateParticipantsAll(10L, EventAllParticipantsUpdateRequest(setOf(10L, 20L)))
+
+        verify(exactly = 1) { eventParticipantRepository.deleteAllByEventId(100L) }
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 100L && it.userId == 10L }) }
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 100L && it.userId == 20L }) }
+        verify(exactly = 1) { instanceParticipantRepository.deleteAllByInstanceIdIn(listOf(10L, 11L)) }
+        assertEquals(false, i1.hasOverrideParticipants)
+        assertEquals(false, i2.hasOverrideParticipants)
+    }
+
+    @Test
+    fun `ALL 참여자 수정 — 존재하지 않는 instance → NOT_FOUND`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsAll(999L, EventAllParticipantsUpdateRequest(setOf(1L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `ALL 참여자 수정 — 존재하지 않는 userId → NOT_FOUND`() {
+        recurringEventAndInstance(rrule = "FREQ=DAILY;COUNT=3")
+        every { userReader.findExistingIds(setOf(10L, 99L)) } returns setOf(10L)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsAll(10L, EventAllParticipantsUpdateRequest(setOf(10L, 99L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
     fun `THIS_ONLY 참여자 수정 성공 — deleteAllByInstanceId 1회 + save N회 + hasOverrideParticipants=true`() {
         val (event, instance) = recurringEventAndInstance(rrule = "FREQ=DAILY;COUNT=3")
         every { userReader.findExistingIds(setOf(10L, 20L)) } returns setOf(10L, 20L)

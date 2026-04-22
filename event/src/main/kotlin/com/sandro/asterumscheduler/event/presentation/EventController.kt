@@ -1,6 +1,7 @@
 package com.sandro.asterumscheduler.event.presentation
 
 import com.sandro.asterumscheduler.common.response.ApiResponse
+import com.sandro.asterumscheduler.event.application.EventAllParticipantsUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventAllTimeUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventAllTitleUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventCreateRequest
@@ -122,6 +123,15 @@ class EventController(
         @RequestBody @Valid request: EventThisAndFutureTimeUpdateRequest,
     ): ApiResponse<Unit> {
         eventService.updateTimeThisAndFuture(id, request)
+        return ApiResponse.ok()
+    }
+
+    @PatchMapping("/instances/{id}/participants/all")
+    fun updateParticipantsAll(
+        @PathVariable id: Long,
+        @RequestBody @Valid request: EventAllParticipantsUpdateRequest,
+    ): ApiResponse<Unit> {
+        eventService.updateParticipantsAll(id, request)
         return ApiResponse.ok()
     }
 
