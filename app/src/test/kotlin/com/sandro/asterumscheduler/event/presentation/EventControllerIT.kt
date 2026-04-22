@@ -318,7 +318,7 @@ class EventControllerIT @Autowired constructor(
         val newIds = orderedInstanceIds(event.id!!)
         kotlin.test.assertEquals(2, newIds.size)
         mockMvc.perform(get("/api/events/instances/${newIds[0]}"))
-            .andExpect(jsonPath("$.data.startAt").value("2027-05-01 14:00:00"))
+            .andExpect(jsonPath("$.data.startAt").value("2027-05-01T14:00:00"))
             .andExpect(jsonPath("$.data.rrule").value("FREQ=WEEKLY;COUNT=2"))
     }
 
