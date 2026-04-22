@@ -64,4 +64,11 @@ class EventService(
         event.deletedAt = now
         instance.deletedAt = now
     }
+
+    @Transactional
+    fun deleteThisOnly(instanceId: Long) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        instance.deletedAt = LocalDateTime.now()
+    }
 }

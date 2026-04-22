@@ -174,6 +174,26 @@ class EventServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 
+    @Test
+    fun `deleteThisOnly - instance 의 deletedAt 만 세팅되고 event 는 건드리지 않는다`() {
+        val (event, instance) = prepareSingle()
+        assertEquals(null, event.deletedAt)
+        assertEquals(null, instance.deletedAt)
+
+        service.deleteThisOnly(instance.id!!)
+
+        assertNotNull(instance.deletedAt)
+        assertEquals(null, event.deletedAt)
+    }
+
+    @Test
+    fun `deleteThisOnly - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.deleteThisOnly(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
     private fun prepareSingle(): Pair<Event, EventInstance> {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val endAt = startAt.plusHours(1)
