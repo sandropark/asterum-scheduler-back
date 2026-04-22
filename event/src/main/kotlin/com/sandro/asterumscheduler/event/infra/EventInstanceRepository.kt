@@ -2,6 +2,8 @@ package com.sandro.asterumscheduler.event.infra
 
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
 
 interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
@@ -17,4 +19,10 @@ interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
         eventId: Long,
         startAt: LocalDateTime,
     ): List<EventInstance>
+
+    @Query(
+        value = "SELECT MAX(start_at) FROM events_instances WHERE event_id = :eventId",
+        nativeQuery = true,
+    )
+    fun findMaxStartAtByEventIdIncludingDeleted(@Param("eventId") eventId: Long): LocalDateTime?
 }
