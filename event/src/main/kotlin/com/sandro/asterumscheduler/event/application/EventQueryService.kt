@@ -48,6 +48,7 @@ class EventQueryService(
             title = instance.title ?: event.title,
             startAt = instance.startAt,
             endAt = instance.endAt,
+            eventStartAt = event.startAt,
             rrule = event.rrule,
             participants = participants,
         )

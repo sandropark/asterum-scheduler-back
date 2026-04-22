@@ -7,6 +7,7 @@ data class EventInstanceDetail(
     val title: String,
     val startAt: LocalDateTime,
     val endAt: LocalDateTime,
+    val eventStartAt: LocalDateTime,
     val rrule: String?,
     val participants: List<ParticipantSummary>,
 )
