@@ -292,6 +292,42 @@ class EventServiceTest {
     }
 
     @Test
+    fun `updateThisOnly - title 과 시간이 instance 에만 반영되고 event 는 건드리지 않는다`() {
+        val origStart = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val origEnd = origStart.plusHours(1)
+        val event = Event(title = "원본", startAt = origStart, endAt = origEnd, rrule = "FREQ=DAILY;COUNT=3")
+            .also { it.assignIdForTest(600L) }
+        val instance = EventInstance(eventId = 600L, startAt = origStart, endAt = origEnd, title = null)
+            .also { it.assignIdForTest(61L) }
+        every { eventInstanceRepository.findById(61L) } returns Optional.of(instance)
+
+        val newStart = LocalDateTime.of(2026, 5, 2, 14, 0)
+        val newEnd = newStart.plusHours(2)
+        service.updateThisOnly(61L, EventThisOnlyUpdateRequest("오버라이드", newStart, newEnd))
+
+        assertEquals("오버라이드", instance.title)
+        assertEquals(newStart, instance.startAt)
+        assertEquals(newEnd, instance.endAt)
+        assertEquals("원본", event.title)
+        assertEquals(origStart, event.startAt)
+        assertEquals(origEnd, event.endAt)
+    }
+
+    @Test
+    fun `updateThisOnly - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val ex = assertFailsWith<BusinessException> {
+            service.updateThisOnly(
+                999L,
+                EventThisOnlyUpdateRequest("x", start, start.plusHours(1)),
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
     fun `deleteThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val instance = EventInstance(eventId = 500L, startAt = startAt, endAt = startAt.plusHours(1))

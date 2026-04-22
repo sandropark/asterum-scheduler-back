@@ -74,6 +74,15 @@ class EventService(
     }
 
     @Transactional
+    fun updateThisOnly(instanceId: Long, request: EventThisOnlyUpdateRequest) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        instance.title = request.title
+        instance.startAt = request.startAt
+        instance.endAt = request.endAt
+    }
+
+    @Transactional
     fun deleteAll(instanceId: Long) {
         val instance = eventInstanceRepository.findById(instanceId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
