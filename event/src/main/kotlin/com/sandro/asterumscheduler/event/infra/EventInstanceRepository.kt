@@ -11,4 +11,10 @@ interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
     ): List<EventInstance>
 
     fun findAllByEventId(eventId: Long): List<EventInstance>
+
+    fun findAllByEventIdAndStartAtGreaterThanEqual(
+        // TODO: 조회 성능 최적화
+        eventId: Long,
+        startAt: LocalDateTime,
+    ): List<EventInstance>
 }

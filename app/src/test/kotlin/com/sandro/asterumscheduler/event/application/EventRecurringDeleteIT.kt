@@ -109,4 +109,51 @@ class EventRecurringDeleteIT @Autowired constructor(
             .singleResult
         assertNotNull(deletedRow)
     }
+
+    @Test
+    fun `deleteThisAndFuture - 3번째 회차부터 soft-delete 되고 event_rrule 이 단축된다`() {
+        val start = LocalDateTime.of(2026, 7, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val event = service.create(
+            EventCreateRequest(title = "일일", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=5")
+        )
+        em.flush(); em.clear()
+
+        val instances = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(5, instances.size)
+        val targetId = instances[2].id!!
+        val targetStart = instances[2].startAt
+
+        service.deleteThisAndFuture(targetId)
+        em.flush(); em.clear()
+
+        val remaining = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(2, remaining.size)
+        assertEquals(start, remaining[0].startAt)
+        assertEquals(start.plusDays(1), remaining[1].startAt)
+
+        val persistedEvent = eventRepository.findById(event.id!!).orElseThrow()
+        assertNull(persistedEvent.deletedAt)
+        val expectedUntil = targetStart.minusSeconds(1)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
+        assertTrue(persistedEvent.rrule!!.contains("FREQ=DAILY"))
+        assertTrue(persistedEvent.rrule!!.contains("UNTIL=$expectedUntil"))
+        assertFalse(persistedEvent.rrule!!.contains("COUNT="))
+
+        @Suppress("UNCHECKED_CAST")
+        val futureDeletedAts = em
+            .createNativeQuery("SELECT deleted_at FROM events_instances WHERE event_id = :eid AND start_at >= :from ORDER BY start_at")
+            .setParameter("eid", event.id)
+            .setParameter("from", targetStart)
+            .resultList as List<Any?>
+        assertEquals(3, futureDeletedAts.size)
+        assertTrue(futureDeletedAts.all { it != null })
+    }
 }

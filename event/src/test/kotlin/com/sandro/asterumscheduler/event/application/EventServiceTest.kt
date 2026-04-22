@@ -22,7 +22,8 @@ class EventServiceTest {
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
     private val recurrenceExpander = mockk<RecurrenceExpander>()
-    private val service = EventService(eventRepository, eventInstanceRepository, recurrenceExpander)
+    private val rruleShortener = mockk<RruleShortener>()
+    private val service = EventService(eventRepository, eventInstanceRepository, recurrenceExpander, rruleShortener)
 
     @Test
     fun `일정을 생성하면 events 와 events_instances 가 동시에 저장된다`() {
@@ -226,6 +227,79 @@ class EventServiceTest {
         every { eventInstanceRepository.findById(999L) } returns Optional.empty()
 
         val ex = assertFailsWith<BusinessException> { service.deleteAll(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `deleteThisAndFuture - target 및 이후 instance 가 soft-delete 되고 이전 instance 와 event 는 건드리지 않는다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val originalRrule = "FREQ=DAILY;COUNT=5"
+        val event = Event(title = "반복", startAt = startAt, endAt = endAt, rrule = originalRrule)
+            .also { it.assignIdForTest(300L) }
+        val i1 = EventInstance(eventId = 300L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(31L) }
+        val i2 = EventInstance(eventId = 300L, startAt = startAt.plusDays(1), endAt = endAt.plusDays(1))
+            .also { it.assignIdForTest(32L) }
+        val i3 = EventInstance(eventId = 300L, startAt = startAt.plusDays(2), endAt = endAt.plusDays(2))
+            .also { it.assignIdForTest(33L) }
+        val i4 = EventInstance(eventId = 300L, startAt = startAt.plusDays(3), endAt = endAt.plusDays(3))
+            .also { it.assignIdForTest(34L) }
+        val i5 = EventInstance(eventId = 300L, startAt = startAt.plusDays(4), endAt = endAt.plusDays(4))
+            .also { it.assignIdForTest(35L) }
+        val newRrule = "FREQ=DAILY;UNTIL=20260503T095959"
+        every { eventInstanceRepository.findById(33L) } returns Optional.of(i3)
+        every { eventRepository.findById(300L) } returns Optional.of(event)
+        every { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) } returns newRrule
+        every {
+            eventInstanceRepository.findAllByEventIdAndStartAtGreaterThanEqual(300L, i3.startAt)
+        } returns listOf(i3, i4, i5)
+
+        service.deleteThisAndFuture(33L)
+
+        assertEquals(null, i1.deletedAt)
+        assertEquals(null, i2.deletedAt)
+        assertNotNull(i3.deletedAt)
+        assertNotNull(i4.deletedAt)
+        assertNotNull(i5.deletedAt)
+        assertEquals(null, event.deletedAt)
+        assertEquals(newRrule, event.rrule)
+        verify(exactly = 1) { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) }
+    }
+
+    @Test
+    fun `deleteThisAndFuture - event_rrule 이 null 이면 INVALID_INPUT`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "단일", startAt = startAt, endAt = endAt, rrule = null)
+            .also { it.assignIdForTest(400L) }
+        val instance = EventInstance(eventId = 400L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(41L) }
+        every { eventInstanceRepository.findById(41L) } returns Optional.of(instance)
+        every { eventRepository.findById(400L) } returns Optional.of(event)
+
+        val ex = assertFailsWith<BusinessException> { service.deleteThisAndFuture(41L) }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verify(exactly = 0) { rruleShortener.shorten(any(), any()) }
+    }
+
+    @Test
+    fun `deleteThisAndFuture - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.deleteThisAndFuture(999L) }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `deleteThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val instance = EventInstance(eventId = 500L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(51L) }
+        every { eventInstanceRepository.findById(51L) } returns Optional.of(instance)
+        every { eventRepository.findById(500L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> { service.deleteThisAndFuture(51L) }
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 

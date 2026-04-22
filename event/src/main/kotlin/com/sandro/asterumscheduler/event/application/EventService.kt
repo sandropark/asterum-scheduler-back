@@ -15,6 +15,7 @@ class EventService(
     private val eventRepository: EventRepository,
     private val eventInstanceRepository: EventInstanceRepository,
     private val recurrenceExpander: RecurrenceExpander,
+    private val rruleShortener: RruleShortener,
 ) {
     @Transactional
     fun create(request: EventCreateRequest): Event {
@@ -82,5 +83,21 @@ class EventService(
         val now = LocalDateTime.now()
         event.deletedAt = now
         eventInstanceRepository.findAllByEventId(event.id!!).forEach { it.deletedAt = now }
+    }
+
+    @Transactional
+    fun deleteThisAndFuture(instanceId: Long) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val rrule = event.rrule ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        event.rrule = rruleShortener.shorten(rrule, instance.startAt.minusSeconds(1))
+
+        val now = LocalDateTime.now()
+        eventInstanceRepository
+            .findAllByEventIdAndStartAtGreaterThanEqual(event.id!!, instance.startAt)
+            .forEach { it.deletedAt = now }
     }
 }
