@@ -6,9 +6,11 @@ import com.sandro.asterumscheduler.common.user.UserReader
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.EventParticipant
+import com.sandro.asterumscheduler.event.domain.InstanceParticipant
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
 import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
+import com.sandro.asterumscheduler.event.infra.InstanceParticipantRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -18,6 +20,7 @@ class EventService(
     private val eventRepository: EventRepository,
     private val eventInstanceRepository: EventInstanceRepository,
     private val eventParticipantRepository: EventParticipantRepository,
+    private val instanceParticipantRepository: InstanceParticipantRepository,
     private val userReader: UserReader,
     private val recurrenceExpander: RecurrenceExpander,
     private val rruleShortener: RruleShortener,
@@ -225,5 +228,23 @@ class EventService(
         eventInstanceRepository
             .findAllByEventIdAndStartAtGreaterThanEqual(event.id!!, instance.startAt)
             .forEach { it.deletedAt = now }
+    }
+
+    @Transactional
+    fun updateParticipantsThisOnly(instanceId: Long, request: EventThisOnlyParticipantsUpdateRequest) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        if (event.rrule == null) throw BusinessException(ErrorCode.INVALID_INPUT)
+        if (request.userIds.isNotEmpty()) {
+            val foundIds = userReader.findExistingIds(request.userIds)
+            if (foundIds != request.userIds) throw BusinessException(ErrorCode.NOT_FOUND)
+        }
+        instanceParticipantRepository.deleteAllByInstanceId(instanceId)
+        request.userIds.forEach { userId ->
+            instanceParticipantRepository.save(InstanceParticipant(instanceId = instanceId, userId = userId))
+        }
+        instance.hasOverrideParticipants = true
     }
 }

@@ -11,6 +11,7 @@ import com.sandro.asterumscheduler.event.application.EventService
 import com.sandro.asterumscheduler.event.application.EventSingleUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventThisAndFutureTimeUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventThisAndFutureTitleUpdateRequest
+import com.sandro.asterumscheduler.event.application.EventThisOnlyParticipantsUpdateRequest
 import com.sandro.asterumscheduler.event.application.EventThisOnlyUpdateRequest
 import com.sandro.asterumscheduler.event.application.MonthlyEventQuery
 import jakarta.validation.Valid
@@ -121,6 +122,15 @@ class EventController(
         @RequestBody @Valid request: EventThisAndFutureTimeUpdateRequest,
     ): ApiResponse<Unit> {
         eventService.updateTimeThisAndFuture(id, request)
+        return ApiResponse.ok()
+    }
+
+    @PatchMapping("/instances/{id}/participants/this-only")
+    fun updateParticipantsThisOnly(
+        @PathVariable id: Long,
+        @RequestBody @Valid request: EventThisOnlyParticipantsUpdateRequest,
+    ): ApiResponse<Unit> {
+        eventService.updateParticipantsThisOnly(id, request)
         return ApiResponse.ok()
     }
 }

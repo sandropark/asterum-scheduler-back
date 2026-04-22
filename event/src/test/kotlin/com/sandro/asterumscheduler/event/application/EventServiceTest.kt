@@ -8,9 +8,11 @@ import com.sandro.asterumscheduler.event.domain.assignIdForTest
 import com.sandro.asterumscheduler.common.user.UserInfo
 import com.sandro.asterumscheduler.common.user.UserReader
 import com.sandro.asterumscheduler.event.domain.EventParticipant
+import com.sandro.asterumscheduler.event.domain.InstanceParticipant
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
 import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
+import com.sandro.asterumscheduler.event.infra.InstanceParticipantRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -26,6 +28,7 @@ class EventServiceTest {
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
     private val eventParticipantRepository = mockk<EventParticipantRepository>()
+    private val instanceParticipantRepository = mockk<InstanceParticipantRepository>()
     private val userReader = mockk<UserReader>()
     private val recurrenceExpander = mockk<RecurrenceExpander>()
     private val rruleShortener = mockk<RruleShortener>()
@@ -34,6 +37,7 @@ class EventServiceTest {
         eventRepository,
         eventInstanceRepository,
         eventParticipantRepository,
+        instanceParticipantRepository,
         userReader,
         recurrenceExpander,
         rruleShortener,
@@ -803,6 +807,18 @@ class EventServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 
+    private fun recurringEventAndInstance(rrule: String?): Pair<Event, EventInstance> {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "반복 일정", startAt = startAt, endAt = endAt, rrule = rrule)
+            .also { it.assignIdForTest(100L) }
+        val instance = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(10L) }
+        every { eventInstanceRepository.findById(10L) } returns Optional.of(instance)
+        every { eventRepository.findById(100L) } returns Optional.of(event)
+        return event to instance
+    }
+
     private fun prepareSingle(): Pair<Event, EventInstance> {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val endAt = startAt.plusHours(1)
@@ -831,6 +847,52 @@ class EventServiceTest {
 
         verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 10L }) }
         verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 20L }) }
+    }
+
+    @Test
+    fun `THIS_ONLY 참여자 수정 성공 — deleteAllByInstanceId 1회 + save N회 + hasOverrideParticipants=true`() {
+        val (event, instance) = recurringEventAndInstance(rrule = "FREQ=DAILY;COUNT=3")
+        every { userReader.findExistingIds(setOf(10L, 20L)) } returns setOf(10L, 20L)
+        every { instanceParticipantRepository.deleteAllByInstanceId(10L) } returns Unit
+        every { instanceParticipantRepository.save(any<InstanceParticipant>()) } answers { firstArg() }
+
+        service.updateParticipantsThisOnly(10L, EventThisOnlyParticipantsUpdateRequest(setOf(10L, 20L)))
+
+        verify(exactly = 1) { instanceParticipantRepository.deleteAllByInstanceId(10L) }
+        verify(exactly = 1) { instanceParticipantRepository.save(match { it.instanceId == 10L && it.userId == 10L }) }
+        verify(exactly = 1) { instanceParticipantRepository.save(match { it.instanceId == 10L && it.userId == 20L }) }
+        assertEquals(true, instance.hasOverrideParticipants)
+    }
+
+    @Test
+    fun `단일 일정 THIS_ONLY 참여자 수정 — INVALID_INPUT`() {
+        recurringEventAndInstance(rrule = null)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisOnly(10L, EventThisOnlyParticipantsUpdateRequest(setOf(1L)))
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `존재하지 않는 instance THIS_ONLY 참여자 수정 — NOT_FOUND`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisOnly(999L, EventThisOnlyParticipantsUpdateRequest(setOf(1L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `존재하지 않는 userId THIS_ONLY 참여자 수정 — NOT_FOUND`() {
+        recurringEventAndInstance(rrule = "FREQ=DAILY;COUNT=3")
+        every { userReader.findExistingIds(setOf(10L, 99L)) } returns setOf(10L)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisOnly(10L, EventThisOnlyParticipantsUpdateRequest(setOf(10L, 99L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 
     @Test

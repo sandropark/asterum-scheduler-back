@@ -495,6 +495,65 @@ class EventControllerIT @Autowired constructor(
     }
 
     @Test
+    fun `PATCH participants this-only — 반복 일정 instance 참여자 오버라이드 후 상세 조회에 반영`() {
+        val user1 = userRepository.save(User(email = "p1@test.com", name = "Player1"))
+        val user2 = userRepository.save(User(email = "p2@test.com", name = "Player2"))
+        em.flush(); em.clear()
+
+        val start = LocalDateTime.of(2029, 3, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(
+            EventCreateRequest(title = "반복", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+        val instanceId = firstInstanceId(event.id!!)
+
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to listOf(user1.id, user2.id)))
+        mockMvc.perform(
+            patch("/api/events/instances/$instanceId/participants/this-only")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        ).andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        mockMvc.perform(get("/api/events/instances/$instanceId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'Player1')]").exists())
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'Player2')]").exists())
+    }
+
+    @Test
+    fun `PATCH participants this-only — 단일 일정이면 400 INVALID_INPUT`() {
+        val start = LocalDateTime.of(2029, 4, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(EventCreateRequest(title = "단일", startAt = start, endAt = end))
+        em.flush(); em.clear()
+        val instanceId = singleInstanceId(event.id!!)
+
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to emptyList<Long>()))
+        mockMvc.perform(
+            patch("/api/events/instances/$instanceId/participants/this-only")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `PATCH participants this-only — 존재하지 않는 instance 는 404 NOT_FOUND`() {
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to emptyList<Long>()))
+        mockMvc.perform(
+            patch("/api/events/instances/999999/participants/this-only")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("NOT_FOUND"))
+    }
+
+    @Test
     fun `POST 참여자 포함 생성 — 상세 조회 participants 에 이름 포함하여 반영`() {
         val user1 = userRepository.save(User(email = "a@test.com", name = "Alice"))
         val user2 = userRepository.save(User(email = "b@test.com", name = "Bob"))
