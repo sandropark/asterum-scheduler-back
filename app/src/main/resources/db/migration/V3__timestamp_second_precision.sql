@@ -1,0 +1,7 @@
+ALTER TABLE events
+    ALTER COLUMN start_at TYPE TIMESTAMP(0),
+    ALTER COLUMN end_at   TYPE TIMESTAMP(0);
+
+ALTER TABLE events_instances
+    ALTER COLUMN start_at TYPE TIMESTAMP(0),
+    ALTER COLUMN end_at   TYPE TIMESTAMP(0);
