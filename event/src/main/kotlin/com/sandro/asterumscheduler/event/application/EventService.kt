@@ -123,6 +123,44 @@ class EventService(
     }
 
     @Transactional
+    fun updateTimeThisAndFuture(
+        instanceId: Long,
+        request: EventThisAndFutureTimeUpdateRequest,
+    ) {
+        val target = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val oldEvent = eventRepository.findById(target.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val originalRrule = oldEvent.rrule ?: throw BusinessException(ErrorCode.INVALID_INPUT)
+
+        oldEvent.rrule = rruleShortener.shorten(originalRrule, target.startAt.minusSeconds(1))
+
+        val newEvent = eventRepository.save(
+            Event(
+                title = oldEvent.title,
+                startAt = request.startAt,
+                endAt = request.endAt,
+                rrule = request.rrule,
+            )
+        )
+
+        val toReplace = eventInstanceRepository
+            .findAllByEventIdAndStartAtGreaterThanEqual(oldEvent.id!!, target.startAt)
+        eventInstanceRepository.deleteAll(toReplace)
+
+        val occurrences = if (request.rrule == null) {
+            listOf(RecurrenceExpander.Occurrence(request.startAt, request.endAt))
+        } else {
+            recurrenceExpander.expand(request.rrule, request.startAt, request.endAt)
+        }
+        occurrences.forEach { occ ->
+            eventInstanceRepository.save(
+                EventInstance(eventId = newEvent.id!!, startAt = occ.startAt, endAt = occ.endAt)
+            )
+        }
+    }
+
+    @Transactional
     fun updateAllTime(instanceId: Long, request: EventAllTimeUpdateRequest) {
         val instance = eventInstanceRepository.findById(instanceId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }

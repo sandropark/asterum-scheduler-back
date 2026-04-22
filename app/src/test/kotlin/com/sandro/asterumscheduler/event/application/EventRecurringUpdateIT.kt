@@ -134,6 +134,86 @@ class EventRecurringUpdateIT @Autowired constructor(
     }
 
     @Test
+    fun `updateTimeThisAndFuture - old event rrule 단축 + 신규 event 생성 + target 이후 활성 instance hard-delete 후 재생성, soft-delete 된 instance 는 유지`() {
+        val start = LocalDateTime.of(2026, 12, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val oldEvent = service.create(
+            EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=5")
+        )
+        em.flush(); em.clear()
+
+        val instances = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == oldEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(5, instances.size)
+
+        val softDeletedId = instances[4].id!!
+        service.deleteThisOnly(softDeletedId)
+        em.flush(); em.clear()
+
+        val targetId = instances[2].id!!
+        val targetStart = instances[2].startAt
+
+        val newStart = LocalDateTime.of(2027, 1, 5, 14, 0)
+        val newEnd = newStart.plusHours(2)
+        val newRrule = "FREQ=WEEKLY;COUNT=2"
+        service.updateTimeThisAndFuture(
+            targetId,
+            EventThisAndFutureTimeUpdateRequest(newStart, newEnd, newRrule),
+        )
+        em.flush(); em.clear()
+
+        val persistedOld = eventRepository.findById(oldEvent.id!!).orElseThrow()
+        val expectedUntil = targetStart.minusSeconds(1)
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
+        kotlin.test.assertTrue(persistedOld.rrule!!.contains("FREQ=DAILY"))
+        kotlin.test.assertTrue(persistedOld.rrule!!.contains("UNTIL=$expectedUntil"))
+        kotlin.test.assertFalse(persistedOld.rrule!!.contains("COUNT="))
+        assertEquals("원본", persistedOld.title)
+
+        val newEvents = eventRepository.findAll().filter { it.id != oldEvent.id }
+        assertEquals(1, newEvents.size)
+        val newEvent = newEvents.single()
+        assertEquals("원본", newEvent.title)
+        assertEquals(newStart, newEvent.startAt)
+        assertEquals(newEnd, newEvent.endAt)
+        assertEquals(newRrule, newEvent.rrule)
+
+        val oldSide = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(30))
+            .filter { it.eventId == oldEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(2, oldSide.size)
+        assertEquals(start, oldSide[0].startAt)
+        assertEquals(start.plusDays(1), oldSide[1].startAt)
+
+        val newSide = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(newStart, newStart.plusDays(30))
+            .filter { it.eventId == newEvent.id }
+            .sortedBy { it.startAt }
+        assertEquals(2, newSide.size)
+        assertEquals(newStart, newSide[0].startAt)
+        assertEquals(newEnd, newSide[0].endAt)
+        assertEquals(newStart.plusWeeks(1), newSide[1].startAt)
+        assertEquals(newEnd.plusWeeks(1), newSide[1].endAt)
+
+        val softDeletedRow = em
+            .createNativeQuery("SELECT deleted_at FROM events_instances WHERE id = :id")
+            .setParameter("id", softDeletedId)
+            .singleResult
+        kotlin.test.assertNotNull(softDeletedRow)
+
+        @Suppress("UNCHECKED_CAST")
+        val remainingOldSideRows = em
+            .createNativeQuery("SELECT id FROM events_instances WHERE event_id = :eid")
+            .setParameter("eid", oldEvent.id)
+            .resultList as List<Any?>
+        assertEquals(3, remainingOldSideRows.size)
+    }
+
+    @Test
     fun `updateTitleThisAndFuture - old event rrule 단축 + 신규 event 생성 + target 이후 instance 가 신규 event 로 이동하고 title null 리셋`() {
         val start = LocalDateTime.of(2026, 11, 1, 10, 0)
         val end = start.plusHours(1)

@@ -624,6 +624,177 @@ class EventServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
     }
 
+    @Test
+    fun `updateTimeThisAndFuture - old rrule 단축 + 신규 event 생성 + target 이후 instance hard-delete 후 expander 결과로 재생성`() {
+        val origStart = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val origEnd = origStart.plusHours(1)
+        val originalRrule = "FREQ=DAILY;COUNT=5"
+        val oldEvent = Event(title = "원본", startAt = origStart, endAt = origEnd, rrule = originalRrule)
+            .also { it.assignIdForTest(1600L) }
+        val i3 = EventInstance(eventId = 1600L, startAt = origStart.plusDays(2), endAt = origEnd.plusDays(2))
+            .also { it.assignIdForTest(163L) }
+        val i4 = EventInstance(eventId = 1600L, startAt = origStart.plusDays(3), endAt = origEnd.plusDays(3))
+            .also { it.assignIdForTest(164L) }
+        val i5 = EventInstance(eventId = 1600L, startAt = origStart.plusDays(4), endAt = origEnd.plusDays(4))
+            .also { it.assignIdForTest(165L) }
+
+        val newStart = LocalDateTime.of(2026, 6, 1, 14, 0)
+        val newEnd = newStart.plusHours(2)
+        val newRrule = "FREQ=WEEKLY;COUNT=2"
+        val shortenedRrule = "FREQ=DAILY;UNTIL=20260502T095959"
+
+        every { eventInstanceRepository.findById(163L) } returns Optional.of(i3)
+        every { eventRepository.findById(1600L) } returns Optional.of(oldEvent)
+        every { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) } returns shortenedRrule
+        every { eventRepository.save(any<Event>()) } answers {
+            val e = firstArg<Event>()
+            e.assignIdForTest(1700L)
+            e
+        }
+        every {
+            eventInstanceRepository.findAllByEventIdAndStartAtGreaterThanEqual(1600L, i3.startAt)
+        } returns listOf(i3, i4, i5)
+        every { eventInstanceRepository.deleteAll(listOf(i3, i4, i5)) } returns Unit
+        every { recurrenceExpander.expand(newRrule, newStart, newEnd, any()) } returns listOf(
+            RecurrenceExpander.Occurrence(newStart, newEnd),
+            RecurrenceExpander.Occurrence(newStart.plusWeeks(1), newEnd.plusWeeks(1)),
+        )
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+
+        service.updateTimeThisAndFuture(
+            163L,
+            EventThisAndFutureTimeUpdateRequest(newStart, newEnd, newRrule),
+        )
+
+        assertEquals(shortenedRrule, oldEvent.rrule)
+        assertEquals("원본", oldEvent.title)
+
+        verify(exactly = 1) { eventInstanceRepository.deleteAll(listOf(i3, i4, i5)) }
+        verify {
+            eventRepository.save(
+                match<Event> {
+                    it.title == "원본" &&
+                        it.startAt == newStart &&
+                        it.endAt == newEnd &&
+                        it.rrule == newRrule
+                }
+            )
+        }
+        verify(exactly = 2) { eventInstanceRepository.save(any<EventInstance>()) }
+        verify {
+            eventInstanceRepository.save(
+                match<EventInstance> {
+                    it.eventId == 1700L && it.title == null && it.startAt == newStart && it.endAt == newEnd
+                }
+            )
+        }
+        verify {
+            eventInstanceRepository.save(
+                match<EventInstance> {
+                    it.eventId == 1700L && it.startAt == newStart.plusWeeks(1) && it.endAt == newEnd.plusWeeks(1)
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `updateTimeThisAndFuture - request_rrule 이 null 이면 expander 호출 없이 단일 instance 로 재생성`() {
+        val origStart = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val origEnd = origStart.plusHours(1)
+        val originalRrule = "FREQ=DAILY;COUNT=3"
+        val oldEvent = Event(title = "원본", startAt = origStart, endAt = origEnd, rrule = originalRrule)
+            .also { it.assignIdForTest(1800L) }
+        val i2 = EventInstance(eventId = 1800L, startAt = origStart.plusDays(1), endAt = origEnd.plusDays(1))
+            .also { it.assignIdForTest(182L) }
+        val i3 = EventInstance(eventId = 1800L, startAt = origStart.plusDays(2), endAt = origEnd.plusDays(2))
+            .also { it.assignIdForTest(183L) }
+
+        val newStart = LocalDateTime.of(2026, 7, 1, 9, 0)
+        val newEnd = newStart.plusHours(1)
+        val shortenedRrule = "FREQ=DAILY;UNTIL=20260501T095959"
+
+        every { eventInstanceRepository.findById(182L) } returns Optional.of(i2)
+        every { eventRepository.findById(1800L) } returns Optional.of(oldEvent)
+        every { rruleShortener.shorten(originalRrule, i2.startAt.minusSeconds(1)) } returns shortenedRrule
+        every { eventRepository.save(any<Event>()) } answers {
+            val e = firstArg<Event>()
+            e.assignIdForTest(1900L)
+            e
+        }
+        every {
+            eventInstanceRepository.findAllByEventIdAndStartAtGreaterThanEqual(1800L, i2.startAt)
+        } returns listOf(i2, i3)
+        every { eventInstanceRepository.deleteAll(listOf(i2, i3)) } returns Unit
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+
+        service.updateTimeThisAndFuture(
+            182L,
+            EventThisAndFutureTimeUpdateRequest(newStart, newEnd, rrule = null),
+        )
+
+        verify(exactly = 0) { recurrenceExpander.expand(any(), any(), any(), any()) }
+        verify(exactly = 1) {
+            eventInstanceRepository.save(
+                match<EventInstance> { it.eventId == 1900L && it.startAt == newStart && it.endAt == newEnd }
+            )
+        }
+        verify {
+            eventRepository.save(match<Event> { it.rrule == null && it.title == "원본" })
+        }
+    }
+
+    @Test
+    fun `updateTimeThisAndFuture - oldEvent_rrule 이 null 이면 INVALID_INPUT`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val event = Event(title = "단일", startAt = startAt, endAt = endAt, rrule = null)
+            .also { it.assignIdForTest(2000L) }
+        val instance = EventInstance(eventId = 2000L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(201L) }
+        every { eventInstanceRepository.findById(201L) } returns Optional.of(instance)
+        every { eventRepository.findById(2000L) } returns Optional.of(event)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTimeThisAndFuture(
+                201L,
+                EventThisAndFutureTimeUpdateRequest(startAt, endAt, rrule = null),
+            )
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+        verify(exactly = 0) { rruleShortener.shorten(any(), any()) }
+    }
+
+    @Test
+    fun `updateTimeThisAndFuture - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTimeThisAndFuture(
+                999L,
+                EventThisAndFutureTimeUpdateRequest(start, start.plusHours(1), rrule = null),
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `updateTimeThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val instance = EventInstance(eventId = 2100L, startAt = startAt, endAt = startAt.plusHours(1))
+            .also { it.assignIdForTest(211L) }
+        every { eventInstanceRepository.findById(211L) } returns Optional.of(instance)
+        every { eventRepository.findById(2100L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateTimeThisAndFuture(
+                211L,
+                EventThisAndFutureTimeUpdateRequest(startAt, startAt.plusHours(1), rrule = null),
+            )
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
     private fun prepareSingle(): Pair<Event, EventInstance> {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val endAt = startAt.plusHours(1)
