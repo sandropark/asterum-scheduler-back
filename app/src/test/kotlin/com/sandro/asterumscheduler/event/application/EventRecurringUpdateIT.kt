@@ -77,6 +77,63 @@ class EventRecurringUpdateIT @Autowired constructor(
     }
 
     @Test
+    fun `updateAllTime - 활성 instance 가 삭제되고 새로운 rrule 기준으로 재생성되며 soft-delete 된 instance 는 건드리지 않는다`() {
+        val start = LocalDateTime.of(2026, 9, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val event = service.create(
+            EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+
+        val original = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(3, original.size)
+
+        service.deleteThisOnly(original[2].id!!)
+        em.flush(); em.clear()
+
+        val newStart = LocalDateTime.of(2026, 10, 5, 14, 0)
+        val newEnd = newStart.plusHours(2)
+        val newRrule = "FREQ=WEEKLY;COUNT=2"
+        service.updateAllTime(
+            original[0].id!!,
+            EventAllTimeUpdateRequest(newStart, newEnd, newRrule),
+        )
+        em.flush(); em.clear()
+
+        val persistedEvent = eventRepository.findById(event.id!!).orElseThrow()
+        assertEquals(newStart, persistedEvent.startAt)
+        assertEquals(newEnd, persistedEvent.endAt)
+        assertEquals(newRrule, persistedEvent.rrule)
+
+        val regenerated = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(newStart, newStart.plusDays(30))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(2, regenerated.size)
+        assertEquals(newStart, regenerated[0].startAt)
+        assertEquals(newEnd, regenerated[0].endAt)
+        assertEquals(newStart.plusWeeks(1), regenerated[1].startAt)
+        assertEquals(newEnd.plusWeeks(1), regenerated[1].endAt)
+
+        val previouslyDeletedAt = em
+            .createNativeQuery("SELECT deleted_at FROM events_instances WHERE id = :id")
+            .setParameter("id", original[2].id)
+            .singleResult
+        kotlin.test.assertNotNull(previouslyDeletedAt)
+
+        @Suppress("UNCHECKED_CAST")
+        val allRowsForEvent = em
+            .createNativeQuery("SELECT id FROM events_instances WHERE event_id = :eid")
+            .setParameter("eid", event.id)
+            .resultList as List<Any?>
+        assertEquals(3, allRowsForEvent.size)
+    }
+
+    @Test
     fun `updateAllTitle - event 제목이 변경되고 단일 수정한 instance 의 title 까지 null 로 리셋된다`() {
         val start = LocalDateTime.of(2026, 8, 1, 10, 0)
         val end = start.plusHours(1)

@@ -382,6 +382,115 @@ class EventServiceTest {
     }
 
     @Test
+    fun `updateAllTime - event 필드가 갱신되고 활성 instance 가 삭제된 뒤 rrule 로 재생성된다`() {
+        val origStart = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val origEnd = origStart.plusHours(1)
+        val event = Event(
+            title = "원본",
+            startAt = origStart,
+            endAt = origEnd,
+            rrule = "FREQ=DAILY;COUNT=3",
+        ).also { it.assignIdForTest(900L) }
+        val active1 = EventInstance(eventId = 900L, startAt = origStart, endAt = origEnd)
+            .also { it.assignIdForTest(91L) }
+        val active2 = EventInstance(eventId = 900L, startAt = origStart.plusDays(1), endAt = origEnd.plusDays(1))
+            .also { it.assignIdForTest(92L) }
+
+        val newStart = LocalDateTime.of(2026, 6, 10, 14, 0)
+        val newEnd = newStart.plusHours(2)
+        val newRrule = "FREQ=WEEKLY;COUNT=2"
+
+        every { eventInstanceRepository.findById(91L) } returns Optional.of(active1)
+        every { eventRepository.findById(900L) } returns Optional.of(event)
+        every { eventInstanceRepository.findAllByEventId(900L) } returns listOf(active1, active2)
+        every { eventInstanceRepository.deleteAll(listOf(active1, active2)) } returns Unit
+        every { recurrenceExpander.expand(newRrule, newStart, newEnd, any()) } returns listOf(
+            RecurrenceExpander.Occurrence(newStart, newEnd),
+            RecurrenceExpander.Occurrence(newStart.plusWeeks(1), newEnd.plusWeeks(1)),
+        )
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+
+        service.updateAllTime(91L, EventAllTimeUpdateRequest(newStart, newEnd, newRrule))
+
+        assertEquals(newStart, event.startAt)
+        assertEquals(newEnd, event.endAt)
+        assertEquals(newRrule, event.rrule)
+        verify(exactly = 1) { eventInstanceRepository.deleteAll(listOf(active1, active2)) }
+        verify(exactly = 2) { eventInstanceRepository.save(any<EventInstance>()) }
+        verify {
+            eventInstanceRepository.save(
+                match<EventInstance> { it.eventId == 900L && it.title == null && it.startAt == newStart && it.endAt == newEnd }
+            )
+        }
+        verify {
+            eventInstanceRepository.save(
+                match<EventInstance> { it.eventId == 900L && it.startAt == newStart.plusWeeks(1) && it.endAt == newEnd.plusWeeks(1) }
+            )
+        }
+    }
+
+    @Test
+    fun `updateAllTime - rrule 이 null 이면 expander 호출 없이 단일 인스턴스로 재생성된다`() {
+        val origStart = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val origEnd = origStart.plusHours(1)
+        val event = Event(
+            title = "원본",
+            startAt = origStart,
+            endAt = origEnd,
+            rrule = "FREQ=DAILY;COUNT=3",
+        ).also { it.assignIdForTest(1000L) }
+        val active = EventInstance(eventId = 1000L, startAt = origStart, endAt = origEnd)
+            .also { it.assignIdForTest(101L) }
+
+        val newStart = LocalDateTime.of(2026, 7, 1, 9, 0)
+        val newEnd = newStart.plusHours(1)
+
+        every { eventInstanceRepository.findById(101L) } returns Optional.of(active)
+        every { eventRepository.findById(1000L) } returns Optional.of(event)
+        every { eventInstanceRepository.findAllByEventId(1000L) } returns listOf(active)
+        every { eventInstanceRepository.deleteAll(listOf(active)) } returns Unit
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+
+        service.updateAllTime(101L, EventAllTimeUpdateRequest(newStart, newEnd, rrule = null))
+
+        assertEquals(newStart, event.startAt)
+        assertEquals(newEnd, event.endAt)
+        assertEquals(null, event.rrule)
+        verify(exactly = 0) { recurrenceExpander.expand(any(), any(), any(), any()) }
+        verify(exactly = 1) { eventInstanceRepository.deleteAll(listOf(active)) }
+        verify(exactly = 1) {
+            eventInstanceRepository.save(
+                match<EventInstance> { it.eventId == 1000L && it.title == null && it.startAt == newStart && it.endAt == newEnd }
+            )
+        }
+    }
+
+    @Test
+    fun `updateAllTime - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val ex = assertFailsWith<BusinessException> {
+            service.updateAllTime(999L, EventAllTimeUpdateRequest(start, start.plusHours(1), rrule = null))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `updateAllTime - event 가 없으면 NOT_FOUND 예외를 던진다`() {
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val instance = EventInstance(eventId = 1100L, startAt = start, endAt = start.plusHours(1))
+            .also { it.assignIdForTest(111L) }
+        every { eventInstanceRepository.findById(111L) } returns Optional.of(instance)
+        every { eventRepository.findById(1100L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateAllTime(111L, EventAllTimeUpdateRequest(start, start.plusHours(1), rrule = null))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
     fun `deleteThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val instance = EventInstance(eventId = 500L, startAt = startAt, endAt = startAt.plusHours(1))

@@ -94,6 +94,32 @@ class EventService(
     }
 
     @Transactional
+    fun updateAllTime(instanceId: Long, request: EventAllTimeUpdateRequest) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        event.startAt = request.startAt
+        event.endAt = request.endAt
+        event.rrule = request.rrule
+
+        val active = eventInstanceRepository.findAllByEventId(event.id!!)
+        eventInstanceRepository.deleteAll(active)
+
+        val occurrences = if (request.rrule == null) {
+            listOf(RecurrenceExpander.Occurrence(request.startAt, request.endAt))
+        } else {
+            recurrenceExpander.expand(request.rrule, request.startAt, request.endAt)
+        }
+        occurrences.forEach { occ ->
+            eventInstanceRepository.save(
+                EventInstance(eventId = event.id!!, startAt = occ.startAt, endAt = occ.endAt)
+            )
+        }
+    }
+
+    @Transactional
     fun deleteAll(instanceId: Long) {
         val instance = eventInstanceRepository.findById(instanceId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
