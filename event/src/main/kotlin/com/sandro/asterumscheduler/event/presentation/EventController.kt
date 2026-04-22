@@ -17,64 +17,51 @@ import com.sandro.asterumscheduler.event.application.EventThisOnlyParticipantsUp
 import com.sandro.asterumscheduler.event.application.EventThisOnlyUpdateRequest
 import com.sandro.asterumscheduler.event.application.MonthlyEventQuery
 import jakarta.validation.Valid
-import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
-import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/events")
 class EventController(
     private val eventService: EventService,
     private val eventQueryService: EventQueryService,
-) {
-    @GetMapping
-    fun monthly(
+) : EventApi {
+
+    override fun monthly(
         @ModelAttribute @Valid query: MonthlyEventQuery,
     ): ApiResponse<List<EventInstanceSummary>> =
         ApiResponse.ok(eventQueryService.findMonthly(query))
 
-    @GetMapping("/instances/{id}")
-    fun detail(@PathVariable id: Long): ApiResponse<EventInstanceDetail> =
+    override fun detail(@PathVariable id: Long): ApiResponse<EventInstanceDetail> =
         ApiResponse.ok(eventQueryService.findDetail(id))
 
-    @PostMapping
-    fun create(@RequestBody @Valid request: EventCreateRequest): ApiResponse<EventCreateResponse> {
+    override fun create(@RequestBody @Valid request: EventCreateRequest): ApiResponse<EventCreateResponse> {
         val event = eventService.create(request)
         return ApiResponse.ok(EventCreateResponse(event.id!!))
     }
 
-    @DeleteMapping("/instances/{id}")
-    fun deleteSingle(@PathVariable id: Long): ApiResponse<Unit> {
+    override fun deleteSingle(@PathVariable id: Long): ApiResponse<Unit> {
         eventService.deleteSingle(id)
         return ApiResponse.ok()
     }
 
-    @DeleteMapping("/instances/{id}/this-only")
-    fun deleteThisOnly(@PathVariable id: Long): ApiResponse<Unit> {
+    override fun deleteThisOnly(@PathVariable id: Long): ApiResponse<Unit> {
         eventService.deleteThisOnly(id)
         return ApiResponse.ok()
     }
 
-    @DeleteMapping("/instances/{id}/all")
-    fun deleteAll(@PathVariable id: Long): ApiResponse<Unit> {
+    override fun deleteAll(@PathVariable id: Long): ApiResponse<Unit> {
         eventService.deleteAll(id)
         return ApiResponse.ok()
     }
 
-    @DeleteMapping("/instances/{id}/this-and-future")
-    fun deleteThisAndFuture(@PathVariable id: Long): ApiResponse<Unit> {
+    override fun deleteThisAndFuture(@PathVariable id: Long): ApiResponse<Unit> {
         eventService.deleteThisAndFuture(id)
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}")
-    fun updateSingle(
+    override fun updateSingle(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventSingleUpdateRequest,
     ): ApiResponse<Unit> {
@@ -82,8 +69,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/this-only")
-    fun updateThisOnly(
+    override fun updateThisOnly(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventThisOnlyUpdateRequest,
     ): ApiResponse<Unit> {
@@ -91,8 +77,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/all/title")
-    fun updateAllTitle(
+    override fun updateAllTitle(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventAllTitleUpdateRequest,
     ): ApiResponse<Unit> {
@@ -100,8 +85,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/all/time")
-    fun updateAllTime(
+    override fun updateAllTime(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventAllTimeUpdateRequest,
     ): ApiResponse<Unit> {
@@ -109,8 +93,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/this-and-future/title")
-    fun updateTitleThisAndFuture(
+    override fun updateTitleThisAndFuture(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventThisAndFutureTitleUpdateRequest,
     ): ApiResponse<Unit> {
@@ -118,8 +101,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/this-and-future/time")
-    fun updateTimeThisAndFuture(
+    override fun updateTimeThisAndFuture(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventThisAndFutureTimeUpdateRequest,
     ): ApiResponse<Unit> {
@@ -127,8 +109,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/participants/all")
-    fun updateParticipantsAll(
+    override fun updateParticipantsAll(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventAllParticipantsUpdateRequest,
     ): ApiResponse<Unit> {
@@ -136,8 +117,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/participants/this-and-future")
-    fun updateParticipantsThisAndFuture(
+    override fun updateParticipantsThisAndFuture(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventThisAndFutureParticipantsUpdateRequest,
     ): ApiResponse<Unit> {
@@ -145,8 +125,7 @@ class EventController(
         return ApiResponse.ok()
     }
 
-    @PatchMapping("/instances/{id}/participants/this-only")
-    fun updateParticipantsThisOnly(
+    override fun updateParticipantsThisOnly(
         @PathVariable id: Long,
         @RequestBody @Valid request: EventThisOnlyParticipantsUpdateRequest,
     ): ApiResponse<Unit> {

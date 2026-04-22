@@ -769,7 +769,7 @@ class EventControllerIT @Autowired constructor(
             .andExpect(jsonPath("$.data.participants[?(@.id == ${team.id!!})].isTeam").value(true))
             .andExpect(jsonPath("$.data.participants[?(@.id == ${team.id!!})].members[0].name").value("멤버Y"))
             .andExpect(jsonPath("$.data.participants[?(@.id == ${individual.id!!})].isTeam").value(false))
-            .andExpect(jsonPath("$.data.participants[?(@.id == ${individual.id!!})].members").isEmpty)
+            .andExpect(jsonPath("$.data.participants[?(@.id == ${individual.id!!})].members[0]").isEmpty)
     }
 
     private fun singleInstanceId(eventId: Long): Long =
