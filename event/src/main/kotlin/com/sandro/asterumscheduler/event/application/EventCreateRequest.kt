@@ -6,4 +6,5 @@ data class EventCreateRequest(
     val title: String,
     val startAt: LocalDateTime,
     val endAt: LocalDateTime,
+    val rrule: String? = null,
 )

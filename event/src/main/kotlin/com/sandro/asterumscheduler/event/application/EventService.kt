@@ -14,15 +14,28 @@ import java.time.LocalDateTime
 class EventService(
     private val eventRepository: EventRepository,
     private val eventInstanceRepository: EventInstanceRepository,
+    private val recurrenceExpander: RecurrenceExpander,
 ) {
     @Transactional
     fun create(request: EventCreateRequest): Event {
         val event = eventRepository.save(
-            Event(title = request.title, startAt = request.startAt, endAt = request.endAt)
+            Event(
+                title = request.title,
+                startAt = request.startAt,
+                endAt = request.endAt,
+                rrule = request.rrule,
+            )
         )
-        eventInstanceRepository.save(
-            EventInstance(eventId = event.id!!, startAt = event.startAt, endAt = event.endAt)
-        )
+        val occurrences = if (request.rrule == null) {
+            listOf(RecurrenceExpander.Occurrence(request.startAt, request.endAt))
+        } else {
+            recurrenceExpander.expand(request.rrule, request.startAt, request.endAt)
+        }
+        occurrences.forEach { occ ->
+            eventInstanceRepository.save(
+                EventInstance(eventId = event.id!!, startAt = occ.startAt, endAt = occ.endAt)
+            )
+        }
         return event
     }
 

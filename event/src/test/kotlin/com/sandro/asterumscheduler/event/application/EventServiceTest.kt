@@ -21,7 +21,8 @@ class EventServiceTest {
 
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
-    private val service = EventService(eventRepository, eventInstanceRepository)
+    private val recurrenceExpander = mockk<RecurrenceExpander>()
+    private val service = EventService(eventRepository, eventInstanceRepository, recurrenceExpander)
 
     @Test
     fun `일정을 생성하면 events 와 events_instances 가 동시에 저장된다`() {
@@ -53,6 +54,54 @@ class EventServiceTest {
                 }
             )
         }
+    }
+
+    @Test
+    fun `rrule 이 있으면 expander 결과 수만큼 events_instance 가 개별 저장된다`() {
+        val title = "주간 회의"
+        val startAt = LocalDateTime.of(2026, 5, 4, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val rrule = "FREQ=WEEKLY;COUNT=3"
+
+        every { eventRepository.save(any<Event>()) } answers {
+            val e = firstArg<Event>()
+            e.assignIdForTest(7L)
+            e
+        }
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+        every { recurrenceExpander.expand(rrule, startAt, endAt, any()) } returns listOf(
+            RecurrenceExpander.Occurrence(startAt, endAt),
+            RecurrenceExpander.Occurrence(startAt.plusWeeks(1), endAt.plusWeeks(1)),
+            RecurrenceExpander.Occurrence(startAt.plusWeeks(2), endAt.plusWeeks(2)),
+        )
+
+        val event = service.create(EventCreateRequest(title, startAt, endAt, rrule))
+
+        assertEquals(rrule, event.rrule)
+        verify(exactly = 1) { recurrenceExpander.expand(rrule, startAt, endAt, any()) }
+        verify(exactly = 3) { eventInstanceRepository.save(any<EventInstance>()) }
+        verify {
+            eventInstanceRepository.save(
+                match<EventInstance> { it.eventId == 7L && it.startAt == startAt.plusWeeks(2) }
+            )
+        }
+    }
+
+    @Test
+    fun `rrule 이 null 이면 expander 는 호출되지 않는다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+
+        every { eventRepository.save(any<Event>()) } answers {
+            val e = firstArg<Event>()
+            e.assignIdForTest(9L)
+            e
+        }
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+
+        service.create(EventCreateRequest("단일", startAt, endAt, rrule = null))
+
+        verify(exactly = 0) { recurrenceExpander.expand(any(), any(), any(), any()) }
     }
 
     @Test
