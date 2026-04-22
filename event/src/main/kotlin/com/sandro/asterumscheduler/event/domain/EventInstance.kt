@@ -21,6 +21,9 @@ open class EventInstance(
     @Column(name = "title")
     var title: String? = null,
 
+    @Column(name = "has_override_participants", nullable = false)
+    var hasOverrideParticipants: Boolean = false,
+
     @Column(name = "deleted_at")
     var deletedAt: LocalDateTime? = null,
 ) : BaseEntity() {
