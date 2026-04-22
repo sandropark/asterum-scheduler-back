@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
 
 interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
-    fun findByStartAtGreaterThanEqualAndStartAtLessThan(
+    fun findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(
         from: LocalDateTime,
         to: LocalDateTime,
     ): List<EventInstance>

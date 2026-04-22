@@ -56,7 +56,7 @@ class EventQueryService(
     fun findMonthly(query: MonthlyEventQuery): List<EventInstanceSummary> {
         // TODO: 추후 조인으로 처리할지 고민
         val instances = eventInstanceRepository
-            .findByStartAtGreaterThanEqualAndStartAtLessThan(query.from, query.to)
+            .findByStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(query.from, query.to)
         val eventIds = instances.map { it.eventId }.toSet()
         val eventTitleById = eventRepository.findAllById(eventIds).associate { it.id!! to it.title }
         return instances.map { instance ->
