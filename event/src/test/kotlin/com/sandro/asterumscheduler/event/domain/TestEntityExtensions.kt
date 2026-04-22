@@ -5,3 +5,9 @@ fun Event.assignIdForTest(id: Long) {
     field.isAccessible = true
     field.set(this, id)
 }
+
+fun EventInstance.assignIdForTest(id: Long) {
+    val field = EventInstance::class.java.getDeclaredField("id")
+    field.isAccessible = true
+    field.set(this, id)
+}

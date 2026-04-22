@@ -2,5 +2,11 @@ package com.sandro.asterumscheduler.event.infra
 
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import org.springframework.data.jpa.repository.JpaRepository
+import java.time.LocalDateTime
 
-interface EventInstanceRepository : JpaRepository<EventInstance, Long>
+interface EventInstanceRepository : JpaRepository<EventInstance, Long> {
+    fun findByDeletedAtIsNullAndStartAtGreaterThanEqualAndStartAtLessThan(
+        from: LocalDateTime,
+        to: LocalDateTime,
+    ): List<EventInstance>
+}
