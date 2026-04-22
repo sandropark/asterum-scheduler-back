@@ -495,6 +495,62 @@ class EventControllerIT @Autowired constructor(
     }
 
     @Test
+    fun `PATCH participants this-and-future — target 이후 participants 반영, 이전은 그대로`() {
+        val user1 = userRepository.save(User(email = "tf1@test.com", name = "TfUser1"))
+        val user2 = userRepository.save(User(email = "tf2@test.com", name = "TfUser2"))
+        em.flush(); em.clear()
+
+        val start = LocalDateTime.of(2031, 1, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(
+            EventCreateRequest(title = "반복", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+        val ids = orderedInstanceIds(event.id!!)
+
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to listOf(user1.id, user2.id)))
+        mockMvc.perform(
+            patch("/api/events/instances/${ids[1]}/participants/this-and-future")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        ).andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        // 이전 instance — participants 없음
+        mockMvc.perform(get("/api/events/instances/${ids[0]}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(0))
+
+        // target 이후 — 새 participants 반영
+        mockMvc.perform(get("/api/events/instances/${ids[1]}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'TfUser1')]").exists())
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'TfUser2')]").exists())
+        mockMvc.perform(get("/api/events/instances/${ids[2]}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+    }
+
+    @Test
+    fun `PATCH participants this-and-future — 단일 일정이면 400 INVALID_INPUT`() {
+        val start = LocalDateTime.of(2031, 2, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = eventService.create(EventCreateRequest(title = "단일", startAt = start, endAt = end))
+        em.flush(); em.clear()
+        val instanceId = singleInstanceId(event.id!!)
+
+        val body = objectMapper.writeValueAsString(mapOf("userIds" to emptyList<Long>()))
+        mockMvc.perform(
+            patch("/api/events/instances/$instanceId/participants/this-and-future")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
     fun `PATCH participants all — 참여자 교체 후 상세 조회에 반영 (단일 일정)`() {
         val user1 = userRepository.save(User(email = "all1@test.com", name = "AllUser1"))
         val user2 = userRepository.save(User(email = "all2@test.com", name = "AllUser2"))

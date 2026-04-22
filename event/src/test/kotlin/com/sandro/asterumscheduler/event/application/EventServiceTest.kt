@@ -850,6 +850,93 @@ class EventServiceTest {
     }
 
     @Test
+    fun `THIS_AND_FUTURE 참여자 수정 성공 — old rrule 단축 + 신규 event 생성 + save N회 + target 이후 instance eventId 변경 + hasOverrideParticipants=false`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+        val originalRrule = "FREQ=DAILY;COUNT=5"
+        val oldEvent = Event(title = "반복", startAt = startAt, endAt = endAt, rrule = originalRrule)
+            .also { it.assignIdForTest(100L) }
+        val i1 = EventInstance(eventId = 100L, startAt = startAt, endAt = endAt)
+            .also { it.assignIdForTest(10L) }
+        val i2 = EventInstance(eventId = 100L, startAt = startAt.plusDays(1), endAt = endAt.plusDays(1))
+            .also { it.assignIdForTest(11L) }
+        val i3 = EventInstance(eventId = 100L, startAt = startAt.plusDays(2), endAt = endAt.plusDays(2))
+            .also { it.assignIdForTest(12L); it.hasOverrideParticipants = true }
+        val i4 = EventInstance(eventId = 100L, startAt = startAt.plusDays(3), endAt = endAt.plusDays(3))
+            .also { it.assignIdForTest(13L) }
+
+        val shortenedRrule = "FREQ=DAILY;UNTIL=20260502T095959"
+        val successorRrule = "FREQ=DAILY;COUNT=3"
+
+        every { eventInstanceRepository.findById(12L) } returns Optional.of(i3)
+        every { eventRepository.findById(100L) } returns Optional.of(oldEvent)
+        every { userReader.findExistingIds(setOf(10L, 20L)) } returns setOf(10L, 20L)
+        every { rruleSuccessor.succeed(originalRrule, oldEvent.startAt, i3.startAt) } returns successorRrule
+        every { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) } returns shortenedRrule
+        every { eventRepository.save(any<Event>()) } answers {
+            firstArg<Event>().also { it.assignIdForTest(200L) }
+        }
+        every { eventParticipantRepository.save(any<EventParticipant>()) } answers { firstArg() }
+        every {
+            eventInstanceRepository.findAllByEventIdAndStartAtGreaterThanEqual(100L, i3.startAt)
+        } returns listOf(i3, i4)
+        every { instanceParticipantRepository.deleteAllByInstanceId(12L) } returns Unit
+        every { instanceParticipantRepository.deleteAllByInstanceId(13L) } returns Unit
+
+        service.updateParticipantsThisAndFuture(12L, EventThisAndFutureParticipantsUpdateRequest(setOf(10L, 20L)))
+
+        assertEquals(shortenedRrule, oldEvent.rrule)
+        verify(exactly = 1) { rruleSuccessor.succeed(originalRrule, oldEvent.startAt, i3.startAt) }
+        verify(exactly = 1) { rruleShortener.shorten(originalRrule, i3.startAt.minusSeconds(1)) }
+        verify {
+            eventRepository.save(match<Event> {
+                it.title == "반복" && it.startAt == i3.startAt && it.rrule == successorRrule
+            })
+        }
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 200L && it.userId == 10L }) }
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 200L && it.userId == 20L }) }
+        assertEquals(200L, i3.eventId)
+        assertEquals(200L, i4.eventId)
+        assertEquals(100L, i1.eventId)
+        assertEquals(100L, i2.eventId)
+        assertEquals(false, i3.hasOverrideParticipants)
+        assertEquals(false, i4.hasOverrideParticipants)
+        verify(exactly = 1) { instanceParticipantRepository.deleteAllByInstanceId(12L) }
+        verify(exactly = 1) { instanceParticipantRepository.deleteAllByInstanceId(13L) }
+    }
+
+    @Test
+    fun `THIS_AND_FUTURE 참여자 수정 — rrule == null → INVALID_INPUT`() {
+        recurringEventAndInstance(rrule = null)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisAndFuture(10L, EventThisAndFutureParticipantsUpdateRequest(setOf(1L)))
+        }
+        assertEquals(ErrorCode.INVALID_INPUT, ex.errorCode)
+    }
+
+    @Test
+    fun `THIS_AND_FUTURE 참여자 수정 — 존재하지 않는 instance → NOT_FOUND`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisAndFuture(999L, EventThisAndFutureParticipantsUpdateRequest(setOf(1L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `THIS_AND_FUTURE 참여자 수정 — 존재하지 않는 userId → NOT_FOUND`() {
+        recurringEventAndInstance(rrule = "FREQ=DAILY;COUNT=3")
+        every { userReader.findExistingIds(setOf(10L, 99L)) } returns setOf(10L)
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateParticipantsThisAndFuture(10L, EventThisAndFutureParticipantsUpdateRequest(setOf(10L, 99L)))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
     fun `ALL 참여자 수정 성공 — deleteAllByEventId + save N회 + 모든 instance hasOverrideParticipants=false + deleteAllByInstanceIdIn`() {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val endAt = startAt.plusHours(1)
