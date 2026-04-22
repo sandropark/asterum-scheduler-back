@@ -8,7 +8,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "events")
 @SQLRestriction("deleted_at IS NULL")
-open class Event(
+class Event(
     @Column(name = "title", nullable = false)
     var title: String,
 

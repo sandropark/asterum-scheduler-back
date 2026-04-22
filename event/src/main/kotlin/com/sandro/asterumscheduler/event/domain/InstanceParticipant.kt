@@ -5,7 +5,7 @@ import jakarta.persistence.*
 
 @Entity
 @Table(name = "instance_participants")
-open class InstanceParticipant(
+class InstanceParticipant(
     @Column(name = "instance_id", nullable = false)
     var instanceId: Long,
 

@@ -5,7 +5,7 @@ import jakarta.persistence.*
 
 @Entity
 @Table(name = "event_participants")
-open class EventParticipant(
+class EventParticipant(
     @Column(name = "event_id", nullable = false)
     var eventId: Long,
 

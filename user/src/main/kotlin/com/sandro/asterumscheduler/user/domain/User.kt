@@ -8,7 +8,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "users")
 @SQLRestriction("deleted_at IS NULL")
-open class User(
+class User(
     @Column(name = "email", nullable = false)
     var email: String,
 
