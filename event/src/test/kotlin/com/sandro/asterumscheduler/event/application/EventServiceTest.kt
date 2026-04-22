@@ -5,7 +5,9 @@ import com.sandro.asterumscheduler.common.exception.ErrorCode
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
 import com.sandro.asterumscheduler.event.domain.assignIdForTest
+import com.sandro.asterumscheduler.event.domain.EventParticipant
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
+import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -21,12 +23,14 @@ class EventServiceTest {
 
     private val eventRepository = mockk<EventRepository>()
     private val eventInstanceRepository = mockk<EventInstanceRepository>()
+    private val eventParticipantRepository = mockk<EventParticipantRepository>()
     private val recurrenceExpander = mockk<RecurrenceExpander>()
     private val rruleShortener = mockk<RruleShortener>()
     private val rruleSuccessor = mockk<RruleSuccessor>()
     private val service = EventService(
         eventRepository,
         eventInstanceRepository,
+        eventParticipantRepository,
         recurrenceExpander,
         rruleShortener,
         rruleSuccessor,
@@ -805,5 +809,22 @@ class EventServiceTest {
         every { eventInstanceRepository.findById(10L) } returns Optional.of(instance)
         every { eventRepository.findById(100L) } returns Optional.of(event)
         return event to instance
+    }
+
+    @Test
+    fun `참여자 포함 생성 — eventParticipantRepository save 가 userIds 수만큼 호출된다`() {
+        val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val endAt = startAt.plusHours(1)
+
+        every { eventRepository.save(any<Event>()) } answers {
+            firstArg<Event>().also { it.assignIdForTest(1L) }
+        }
+        every { eventInstanceRepository.save(any<EventInstance>()) } answers { firstArg() }
+        every { eventParticipantRepository.save(any<EventParticipant>()) } answers { firstArg() }
+
+        service.create(EventCreateRequest(title = "회의", startAt = startAt, endAt = endAt, userIds = setOf(10L, 20L)))
+
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 10L }) }
+        verify(exactly = 1) { eventParticipantRepository.save(match { it.eventId == 1L && it.userId == 20L }) }
     }
 }

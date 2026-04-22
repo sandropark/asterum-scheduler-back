@@ -4,7 +4,9 @@ import com.sandro.asterumscheduler.common.exception.BusinessException
 import com.sandro.asterumscheduler.common.exception.ErrorCode
 import com.sandro.asterumscheduler.event.domain.Event
 import com.sandro.asterumscheduler.event.domain.EventInstance
+import com.sandro.asterumscheduler.event.domain.EventParticipant
 import com.sandro.asterumscheduler.event.infra.EventInstanceRepository
+import com.sandro.asterumscheduler.event.infra.EventParticipantRepository
 import com.sandro.asterumscheduler.event.infra.EventRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -14,6 +16,7 @@ import java.time.LocalDateTime
 class EventService(
     private val eventRepository: EventRepository,
     private val eventInstanceRepository: EventInstanceRepository,
+    private val eventParticipantRepository: EventParticipantRepository,
     private val recurrenceExpander: RecurrenceExpander,
     private val rruleShortener: RruleShortener,
     private val rruleSuccessor: RruleSuccessor,
@@ -37,6 +40,9 @@ class EventService(
             eventInstanceRepository.save(
                 EventInstance(eventId = event.id!!, startAt = occ.startAt, endAt = occ.endAt)
             )
+        }
+        request.userIds.forEach { userId ->
+            eventParticipantRepository.save(EventParticipant(eventId = event.id!!, userId = userId))
         }
         return event
     }

@@ -16,6 +16,7 @@ data class EventCreateRequest(
     val endAt: LocalDateTime,
     @field:Size(max = 500)
     val rrule: String? = null,
+    val userIds: Set<Long> = emptySet(),
 ) {
     @get:AssertTrue(message = "startAt 은 endAt 보다 이전이어야 합니다")
     val isTimeRangeValid: Boolean

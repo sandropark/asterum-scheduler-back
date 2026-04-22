@@ -3,6 +3,8 @@ package com.sandro.asterumscheduler.event.presentation
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.sandro.asterumscheduler.event.application.EventCreateRequest
 import com.sandro.asterumscheduler.event.application.EventService
+import com.sandro.asterumscheduler.user.domain.User
+import com.sandro.asterumscheduler.user.infra.UserRepository
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -32,6 +34,7 @@ class EventControllerIT @Autowired constructor(
     private val mockMvc: MockMvc,
     private val objectMapper: ObjectMapper,
     private val eventService: EventService,
+    private val userRepository: UserRepository,
     private val em: EntityManager,
 ) {
     companion object {
@@ -489,6 +492,37 @@ class EventControllerIT @Autowired constructor(
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
+    }
+
+    @Test
+    fun `POST 참여자 포함 생성 — 상세 조회 participants 에 이름 포함하여 반영`() {
+        val user1 = userRepository.save(User(email = "a@test.com", name = "Alice"))
+        val user2 = userRepository.save(User(email = "b@test.com", name = "Bob"))
+        em.flush(); em.clear()
+
+        val start = LocalDateTime.of(2029, 1, 1, 10, 0)
+        val end = start.plusHours(1)
+        val body = objectMapper.writeValueAsString(
+            mapOf(
+                "title" to "참여자 회의",
+                "startAt" to start.toString(),
+                "endAt" to end.toString(),
+                "userIds" to listOf(user1.id, user2.id),
+            )
+        )
+        mockMvc.perform(post("/api/events").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk)
+        em.flush(); em.clear()
+
+        val eventId = (em.createNativeQuery("SELECT id FROM events ORDER BY id DESC LIMIT 1")
+            .singleResult as Number).toLong()
+        val instanceId = firstInstanceId(eventId)
+
+        mockMvc.perform(get("/api/events/instances/$instanceId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.participants.length()").value(2))
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'Alice')]").exists())
+            .andExpect(jsonPath("$.data.participants[?(@.name == 'Bob')]").exists())
     }
 
     private fun singleInstanceId(eventId: Long): Long =
