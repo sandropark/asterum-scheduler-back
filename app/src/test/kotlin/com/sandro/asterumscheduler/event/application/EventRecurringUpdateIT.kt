@@ -75,4 +75,41 @@ class EventRecurringUpdateIT @Autowired constructor(
         assertEquals(start, persistedEvent.startAt)
         assertEquals(end, persistedEvent.endAt)
     }
+
+    @Test
+    fun `updateAllTitle - event 제목이 변경되고 단일 수정한 instance 의 title 까지 null 로 리셋된다`() {
+        val start = LocalDateTime.of(2026, 8, 1, 10, 0)
+        val end = start.plusHours(1)
+
+        val event = service.create(
+            EventCreateRequest(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+        )
+        em.flush(); em.clear()
+
+        val instances = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(3, instances.size)
+        val middleId = instances[1].id!!
+
+        service.updateThisOnly(
+            middleId,
+            EventThisOnlyUpdateRequest("오버라이드", instances[1].startAt, instances[1].endAt),
+        )
+        em.flush(); em.clear()
+
+        service.updateAllTitle(middleId, EventAllTitleUpdateRequest("새 제목"))
+        em.flush(); em.clear()
+
+        val persistedEvent = eventRepository.findById(event.id!!).orElseThrow()
+        assertEquals("새 제목", persistedEvent.title)
+
+        val reloaded = eventInstanceRepository
+            .findByStartAtGreaterThanEqualAndStartAtLessThan(start, start.plusDays(10))
+            .filter { it.eventId == event.id }
+            .sortedBy { it.startAt }
+        assertEquals(3, reloaded.size)
+        assertEquals(listOf(null, null, null), reloaded.map { it.title })
+    }
 }

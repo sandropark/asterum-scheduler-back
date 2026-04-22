@@ -83,6 +83,17 @@ class EventService(
     }
 
     @Transactional
+    fun updateAllTitle(instanceId: Long, request: EventAllTitleUpdateRequest) {
+        val instance = eventInstanceRepository.findById(instanceId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+        val event = eventRepository.findById(instance.eventId)
+            .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }
+
+        event.title = request.title
+        eventInstanceRepository.findAllByEventId(event.id!!).forEach { it.title = null }
+    }
+
+    @Transactional
     fun deleteAll(instanceId: Long) {
         val instance = eventInstanceRepository.findById(instanceId)
             .orElseThrow { BusinessException(ErrorCode.NOT_FOUND) }

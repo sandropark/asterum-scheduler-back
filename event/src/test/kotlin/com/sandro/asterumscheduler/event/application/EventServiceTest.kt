@@ -328,6 +328,60 @@ class EventServiceTest {
     }
 
     @Test
+    fun `updateAllTitle - event_title 이 변경되고 모든 instance 의 title 이 null 로 리셋된다`() {
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val end = start.plusHours(1)
+        val event = Event(title = "원본", startAt = start, endAt = end, rrule = "FREQ=DAILY;COUNT=3")
+            .also { it.assignIdForTest(700L) }
+        val i1 = EventInstance(eventId = 700L, startAt = start, endAt = end, title = null)
+            .also { it.assignIdForTest(71L) }
+        val i2 = EventInstance(
+            eventId = 700L,
+            startAt = start.plusDays(1),
+            endAt = end.plusDays(1),
+            title = "오버라이드",
+        ).also { it.assignIdForTest(72L) }
+        val i3 = EventInstance(eventId = 700L, startAt = start.plusDays(2), endAt = end.plusDays(2), title = null)
+            .also { it.assignIdForTest(73L) }
+        every { eventInstanceRepository.findById(72L) } returns Optional.of(i2)
+        every { eventRepository.findById(700L) } returns Optional.of(event)
+        every { eventInstanceRepository.findAllByEventId(700L) } returns listOf(i1, i2, i3)
+
+        service.updateAllTitle(72L, EventAllTitleUpdateRequest("새 제목"))
+
+        assertEquals("새 제목", event.title)
+        assertEquals(start, event.startAt)
+        assertEquals(end, event.endAt)
+        assertEquals(null, i1.title)
+        assertEquals(null, i2.title)
+        assertEquals(null, i3.title)
+    }
+
+    @Test
+    fun `updateAllTitle - instance 가 없으면 NOT_FOUND 예외를 던진다`() {
+        every { eventInstanceRepository.findById(999L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateAllTitle(999L, EventAllTitleUpdateRequest("x"))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
+    fun `updateAllTitle - event 가 없으면 NOT_FOUND 예외를 던진다`() {
+        val start = LocalDateTime.of(2026, 5, 1, 10, 0)
+        val instance = EventInstance(eventId = 800L, startAt = start, endAt = start.plusHours(1))
+            .also { it.assignIdForTest(81L) }
+        every { eventInstanceRepository.findById(81L) } returns Optional.of(instance)
+        every { eventRepository.findById(800L) } returns Optional.empty()
+
+        val ex = assertFailsWith<BusinessException> {
+            service.updateAllTitle(81L, EventAllTitleUpdateRequest("x"))
+        }
+        assertEquals(ErrorCode.NOT_FOUND, ex.errorCode)
+    }
+
+    @Test
     fun `deleteThisAndFuture - event 가 없으면 NOT_FOUND 예외를 던진다`() {
         val startAt = LocalDateTime.of(2026, 5, 1, 10, 0)
         val instance = EventInstance(eventId = 500L, startAt = startAt, endAt = startAt.plusHours(1))
